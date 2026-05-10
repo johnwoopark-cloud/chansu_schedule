@@ -2,7 +2,7 @@ name: Daily Schedule Notifier
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 매일 UTC 00:00 (한국 시간 09:00)
+    - cron: '0 5 * * *' # 매일 UTC 05:00 (한국 시간 14:00)
   workflow_dispatch: # 수동 실행 버튼 추가
 
 jobs:
