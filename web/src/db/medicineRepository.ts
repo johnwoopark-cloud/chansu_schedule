@@ -1,7 +1,7 @@
 import type { MedicationDB } from './database';
 import type { Medicine, Schedule, Tag } from './types';
 import { validateMedicine, type MedicineErrors } from '../domain/medicine';
-import { validateSchedule, type ScheduleErrors } from '../domain/schedule';
+import { linkedDescendants, validateSchedule, type ScheduleErrors } from '../domain/schedule';
 
 export type SaveResult<E> = { ok: true; id: number } | { ok: false; errors: E };
 
@@ -65,19 +65,41 @@ export async function saveSchedule(
 ): Promise<SaveResult<ScheduleErrors>> {
   const errors = validateSchedule(schedule);
   if (Object.keys(errors).length > 0) return { ok: false, errors };
-  const clean: Omit<Schedule, 'id'> & { id?: number } = { ...schedule, instructions: schedule.instructions.trim() };
-  // A schedule uses either a slot or its own time, never both.
-  if (clean.slotId !== undefined) delete clean.timeOfDay;
-  if (clean.id !== undefined) {
-    await db.schedules.put(clean as Schedule);
-    return { ok: true, id: clean.id };
-  }
-  const { id: _omit, ...rest } = clean;
-  return { ok: true, id: (await db.schedules.add(rest as Schedule)) as number };
+  return db.transaction('rw', db.schedules, async () => {
+    if (schedule.type === 'LINKED' && schedule.linked) {
+      const parentId = schedule.linked.parentScheduleId;
+      const parent = await db.schedules.get(parentId);
+      const loops =
+        schedule.id !== undefined &&
+        (parentId === schedule.id || linkedDescendants(schedule.id, await db.schedules.toArray()).has(parentId));
+      if (!parent) return { ok: false, errors: { linked: '앞 일정을 찾을 수 없습니다.' } } as const;
+      if (loops) return { ok: false, errors: { linked: '자기 자신이나 뒤따르는 일정에는 연결할 수 없습니다.' } } as const;
+    }
+    const clean: Omit<Schedule, 'id'> & { id?: number } = { ...schedule, instructions: schedule.instructions.trim() };
+    // Keep only the fields the schedule type uses.
+    if (clean.type !== 'TIME' || clean.slotId !== undefined) delete clean.timeOfDay;
+    if (clean.type !== 'TIME') delete clean.slotId;
+    if (clean.type !== 'CONTINUOUS_INTERVAL' && clean.type !== 'WINDOWED_INTERVAL') delete clean.interval;
+    if (clean.type !== 'WINDOWED_INTERVAL') delete clean.window;
+    if (clean.type !== 'LINKED') delete clean.linked;
+    if (clean.id !== undefined) {
+      await db.schedules.put(clean as Schedule);
+      return { ok: true, id: clean.id } as const;
+    }
+    const { id: _omit, ...rest } = clean;
+    return { ok: true, id: (await db.schedules.add(rest as Schedule)) as number } as const;
+  });
 }
 
-export async function deleteSchedule(db: MedicationDB, id: number): Promise<void> {
-  await db.schedules.delete(id);
+export type DeleteScheduleResult = { ok: true } | { ok: false; reason: 'has-linked' };
+
+/** Deletes a schedule unless another schedule follows it. */
+export async function deleteSchedule(db: MedicationDB, id: number): Promise<DeleteScheduleResult> {
+  return db.transaction('rw', db.schedules, async () => {
+    if (linkedDescendants(id, await db.schedules.toArray()).size > 0) return { ok: false, reason: 'has-linked' } as const;
+    await db.schedules.delete(id);
+    return { ok: true } as const;
+  });
 }
 
 export async function listTags(db: MedicationDB): Promise<Tag[]> {

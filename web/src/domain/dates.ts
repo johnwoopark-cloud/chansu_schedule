@@ -82,3 +82,17 @@ export function timestampFor(date: ISODate, time: string, cutoff: string): numbe
 export function daysBetween(from: ISODate, to: ISODate): number {
   return Math.round((parseISODate(to).getTime() - parseISODate(from).getTime()) / 86_400_000);
 }
+
+/** [start, end) timestamps of a logical day: from the cutoff on `date` to the cutoff on the next day. */
+export function logicalDayRange(date: ISODate, cutoff: string): [number, number] {
+  const start = parseISODate(date);
+  start.setMinutes(cutoffMinutes(cutoff));
+  const end = parseISODate(addDays(date, 1));
+  end.setMinutes(cutoffMinutes(cutoff));
+  return [start.getTime(), end.getTime()];
+}
+
+/** "HH:MM" for a number of minutes since midnight. */
+export function minutesToTime(minutes: number): string {
+  return `${pad(Math.floor(minutes / 60) % 24)}:${pad(minutes % 60)}`;
+}

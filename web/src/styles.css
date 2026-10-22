@@ -1423,3 +1423,239 @@ details.card[open] summary::after {
   font-size: 0.8rem;
   font-weight: 400;
 }
+
+/* ---------- Stage 5: advanced schedules ---------- */
+.type-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.type-picker button {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.type-picker button.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+  background: var(--accent-soft);
+}
+
+.type-picker button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.type-label {
+  font-weight: 700;
+}
+
+.type-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.duration-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.duration-input span {
+  color: var(--text-muted);
+}
+
+.sheet select,
+.card select {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.month-day-picker {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.month-day-picker button {
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.month-day-picker button.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.button-row .button {
+  padding: 0 10px;
+}
+
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.calendar-head {
+  padding: 4px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.calendar-day {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 2px;
+  min-height: 52px;
+  padding: 6px 0 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.calendar-day.outside {
+  opacity: 0.35;
+}
+
+.calendar-day.today .calendar-num {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.calendar-day.selected {
+  border-color: var(--text);
+}
+
+.calendar-day.done {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.calendar-day.partial {
+  background: var(--warn-soft);
+  color: var(--warn-text);
+}
+
+.calendar-day.missed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.calendar-day.planned {
+  background: var(--accent-soft);
+}
+
+.calendar-num {
+  font-size: 0.92rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-count {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.calendar-legend li::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.calendar-legend .done::before {
+  background: var(--accent);
+}
+
+.calendar-legend .partial::before {
+  background: var(--warn-text);
+}
+
+.calendar-legend .missed::before {
+  background: var(--danger);
+}
+
+.calendar-legend .planned::before {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+}
+
+.calendar-detail {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.calendar-detail li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.calendar-time {
+  min-width: 5.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-detail .badge {
+  margin-left: auto;
+}

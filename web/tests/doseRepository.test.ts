@@ -19,6 +19,7 @@ import { ensureTag } from '../src/db/medicineRepository';
 import type { Medicine, Schedule } from '../src/db/types';
 import { newMedicine } from '../src/domain/medicine';
 import { newTimeSchedule } from '../src/domain/schedule';
+import { at, timeOcc } from './helpers';
 
 let db: MedicationDB;
 let counter = 0;
@@ -49,7 +50,7 @@ afterEach(async () => {
 describe('recordDoses', () => {
   it('creates a scheduled record with a snapshot, then updates it in place', async () => {
     const t1 = new Date(2026, 9, 22, 8, 5).getTime();
-    const [id] = await recordDoses(db, DAY, [{ schedule, medicine, time: '08:00' }], 'TAKEN', t1, '03:00');
+    const [id] = await recordDoses(db, DAY, [{ occurrence: timeOcc(schedule, medicine, at(2026, 10, 22, 8)) }], 'TAKEN', t1);
     const created = (await db.doseEvents.get(id))!;
     expect(created).toMatchObject({
       kind: 'SCHEDULED',
@@ -62,21 +63,21 @@ describe('recordDoses', () => {
       snapshot: { medicineName: '아모잘탄', strength: 5, strengthUnit: 'mg', doseQty: 1, doseUnit: '정', tags: ['혈압'] },
     });
 
-    const [again] = await recordDoses(db, DAY, [{ schedule, medicine, time: '08:00' }], 'SKIPPED', t1 + 1, '03:00');
+    const [again] = await recordDoses(db, DAY, [{ occurrence: timeOcc(schedule, medicine, at(2026, 10, 22, 8)) }], 'SKIPPED', t1 + 1);
     expect(again).toBe(id);
     expect(await db.doseEvents.count()).toBe(1);
     expect((await db.doseEvents.get(id))!.status).toBe('SKIPPED');
   });
 
   it('keeps separate records per date', async () => {
-    await recordDoses(db, DAY, [{ schedule, medicine, time: '08:00' }], 'TAKEN', 1, '03:00');
-    await recordDoses(db, '2026-10-23', [{ schedule, medicine, time: '08:00' }], 'TAKEN', 2, '03:00');
+    await recordDoses(db, DAY, [{ occurrence: timeOcc(schedule, medicine) }], 'TAKEN', 1);
+    await recordDoses(db, '2026-10-23', [{ occurrence: timeOcc(schedule, medicine) }], 'TAKEN', 2);
     expect((await listEventsForDate(db, DAY)).length).toBe(1);
     expect(await db.doseEvents.count()).toBe(2);
   });
 
   it('clears and restores records', async () => {
-    const ids = await recordDoses(db, DAY, [{ schedule, medicine, time: '08:00' }], 'TAKEN', 1, '03:00');
+    const ids = await recordDoses(db, DAY, [{ occurrence: timeOcc(schedule, medicine) }], 'TAKEN', 1);
     const before = await db.doseEvents.bulkGet(ids);
     await clearDoses(db, ids);
     expect(await db.doseEvents.count()).toBe(0);

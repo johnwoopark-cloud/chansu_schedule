@@ -15,6 +15,7 @@ const PARENT: Partial<Record<Route['page'], Route['page']>> = {
   symptoms: 'more',
   'record-settings': 'more',
   medicine: 'medicines',
+  'medicine-calendar': 'medicines',
   schedule: 'medicines',
   prescription: 'prescriptions',
 };

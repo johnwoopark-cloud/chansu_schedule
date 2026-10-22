@@ -83,11 +83,11 @@ describe('describe', () => {
   });
 
   it('summarises a schedule', () => {
-    expect(describeSchedule(base(), slots)).toBe('아침 · 매일');
-    expect(describeSchedule(base({ slotId: undefined, timeOfDay: '15:00' }), slots)).toBe('오후 3:00 · 매일');
-    expect(describeSchedule(base({ periodStart: '2026-10-01', periodEnd: '2026-10-31' }), slots)).toBe(
+    expect(describeSchedule(base(), { slots })).toBe('아침 · 매일');
+    expect(describeSchedule(base({ slotId: undefined, timeOfDay: '15:00' }), { slots })).toBe('오후 3:00 · 매일');
+    expect(describeSchedule(base({ periodStart: '2026-10-01', periodEnd: '2026-10-31' }), { slots })).toBe(
       '아침 · 매일 · 26.10.1~26.10.31',
     );
-    expect(describeSchedule(base({ slotId: 99 }), slots)).toBe('(삭제된 시기) · 매일');
+    expect(describeSchedule(base({ slotId: 99 }), { slots })).toBe('(삭제된 시기) · 매일');
   });
 });

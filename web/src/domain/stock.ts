@@ -1,6 +1,7 @@
 import type { DoseEvent, ISODate, Medicine, Schedule, Slot } from '../db/types';
 import { addDays, daysBetween } from './dates';
 import { occursOn } from './schedule';
+import { plannedCount, type Occurrence } from './occurrences';
 
 export const DEFAULT_LOW_STOCK_DAYS = 7;
 const HORIZON_DAYS = 366;
@@ -19,16 +20,10 @@ export function stockDeduction(event: Pick<DoseEvent, 'kind' | 'status' | 'snaps
 
 /** Planned stock usage of a medicine on one day, in its stock unit. */
 export function plannedUsageOn(medicine: Medicine, schedules: readonly Schedule[], date: ISODate): number {
+  const byId = new Map(schedules.map((s) => [s.id!, s]));
   return schedules
-    .filter(
-      (s) =>
-        s.medicineId === medicine.id &&
-        s.active &&
-        s.type === 'TIME' &&
-        unitsMatch(s.doseUnit, medicine.stockUnit) &&
-        occursOn(s, date),
-    )
-    .reduce((sum, s) => sum + s.doseQty, 0);
+    .filter((s) => s.medicineId === medicine.id && unitsMatch(s.doseUnit, medicine.stockUnit))
+    .reduce((sum, s) => sum + s.doseQty * plannedCount(s, date, byId), 0);
 }
 
 /** Average daily usage over the next week; used to suggest prescription quantities. */
@@ -48,37 +43,37 @@ export interface StockForecast {
 }
 
 /**
- * Simulates planned usage forward from `today`. Today's doses already taken
- * have been deducted from stock, so only today's still-unchecked doses count.
+ * Simulates planned usage forward from `today`. Doses already taken today have
+ * been deducted from stock, so today only counts `todayRemaining` (the usage of
+ * today's still-unchecked doses).
  */
 export function forecastStock(
   medicine: Medicine,
   schedules: readonly Schedule[],
   today: ISODate,
-  todaysRecordedScheduleIds: ReadonlySet<number>,
+  todayRemaining: number,
 ): StockForecast {
   let stock = medicine.stockAmount;
-  const todayUsage = schedules
-    .filter(
-      (s) =>
-        s.medicineId === medicine.id &&
-        s.active &&
-        s.type === 'TIME' &&
-        !todaysRecordedScheduleIds.has(s.id!) &&
-        unitsMatch(s.doseUnit, medicine.stockUnit) &&
-        occursOn(s, today),
-    )
-    .reduce((sum, s) => sum + s.doseQty, 0);
-
-  let anyUsage = todayUsage > 0;
+  let anyUsage = false;
   for (let i = 0; i < HORIZON_DAYS; i++) {
     const date = addDays(today, i);
-    const usage = i === 0 ? todayUsage : plannedUsageOn(medicine, schedules, date);
+    const usage = i === 0 ? todayRemaining : plannedUsageOn(medicine, schedules, date);
     if (usage > 0) anyUsage = true;
     if (usage > stock + 1e-9) return { daysCovered: i, runOutDate: date, noUsage: false };
     stock -= usage;
   }
   return { daysCovered: HORIZON_DAYS, runOutDate: null, noUsage: !anyUsage };
+}
+
+/** Stock usage of today's unchecked doses for each medicine (waiting linked doses included). */
+export function remainingUsageToday(rows: readonly { occurrence: Occurrence; state: string }[]): Map<number, number> {
+  const usage = new Map<number, number>();
+  for (const { occurrence: o, state } of rows) {
+    if (state !== 'pending' && state !== 'waiting') continue;
+    if (!unitsMatch(o.schedule.doseUnit, o.medicine.stockUnit)) continue;
+    usage.set(o.medicine.id!, (usage.get(o.medicine.id!) ?? 0) + o.schedule.doseQty);
+  }
+  return usage;
 }
 
 export interface PacketForecast {

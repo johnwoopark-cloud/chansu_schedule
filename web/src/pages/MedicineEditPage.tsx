@@ -41,8 +41,20 @@ import { goBackTo, href, navigate } from '../router';
 
 function SchedulesSection({ medicineId }: { medicineId: number }) {
   const data = useLiveQuery(async () => {
-    const [schedules, slots] = await Promise.all([listSchedules(db, medicineId), listSlots(db)]);
-    return { schedules, slots: new Map(slots.map((s) => [s.id!, s])) };
+    const [schedules, slots, all, medicines] = await Promise.all([
+      listSchedules(db, medicineId),
+      listSlots(db),
+      db.schedules.toArray(),
+      db.medicines.toArray(),
+    ]);
+    return {
+      schedules,
+      describe: {
+        slots: new Map(slots.map((s) => [s.id!, s])),
+        schedules: new Map(all.map((s) => [s.id!, s])),
+        medicines: new Map(medicines.map((m) => [m.id!, m])),
+      },
+    };
   }, [medicineId]);
   if (!data) return null;
   const anyActive = data.schedules.some((s) => s.active);
@@ -66,7 +78,7 @@ function SchedulesSection({ medicineId }: { medicineId: number }) {
         {data.schedules.map((s) => (
           <li key={s.id} class={s.active ? undefined : 'inactive'}>
             <a href={href({ page: 'schedule', medicineId, id: s.id! })}>
-              <span class="schedule-when">{describeSchedule(s, data.slots)}</span>
+              <span class="schedule-when">{describeSchedule(s, data.describe)}</span>
               <span class="schedule-dose">
                 {formatDose(s.doseQty, s.doseUnit)}
                 {s.instructions && ` · ${s.instructions}`}
@@ -82,9 +94,16 @@ function SchedulesSection({ medicineId }: { medicineId: number }) {
           </li>
         ))}
       </ul>
-      <a class="button block" href={href({ page: 'schedule', medicineId, id: 'new' })}>
-        <Icon name="plus" size={20} /> 일정 추가
-      </a>
+      <div class="button-row">
+        <a class="button" href={href({ page: 'schedule', medicineId, id: 'new' })}>
+          <Icon name="plus" size={20} /> 일정 추가
+        </a>
+        {data.schedules.length > 0 && (
+          <a class="button" href={href({ page: 'medicine-calendar', id: medicineId })}>
+            <Icon name="today" size={20} /> 달력으로 보기
+          </a>
+        )}
+      </div>
     </section>
   );
 }

@@ -58,12 +58,12 @@ describe('forecastStock', () => {
 
   it('counts days covered and the run-out date', () => {
     // 10 tablets, 2 per day, nothing taken yet today → covers today..+4, runs out on day 5.
-    const f = forecastStock(med(), twiceDaily, TODAY, new Set());
+    const f = forecastStock(med(), twiceDaily, TODAY, 2);
     expect(f).toEqual({ daysCovered: 5, runOutDate: '2026-10-27', noUsage: false });
   });
 
   it('only counts today’s doses that are still unchecked', () => {
-    const f = forecastStock(med({ stockAmount: 9 }), twiceDaily, TODAY, new Set([1]));
+    const f = forecastStock(med({ stockAmount: 9 }), twiceDaily, TODAY, 1);
     // Today needs 1 more (9 → 8), then 2/day for 4 days.
     expect(f.daysCovered).toBe(5);
   });
@@ -71,17 +71,17 @@ describe('forecastStock', () => {
   it('follows weekdays and inactive schedules', () => {
     const weekdays = [sched(1, { weekdays: [false, true, true, true, true, true, false] }), sched(2, { active: false })];
     // Thu, Fri use 1 each; Sat/Sun none; Mon uses the 3rd → with 2 tablets runs out Monday.
-    const f = forecastStock(med({ stockAmount: 2 }), weekdays, TODAY, new Set());
+    const f = forecastStock(med({ stockAmount: 2 }), weekdays, TODAY, 1);
     expect(f.runOutDate).toBe('2026-10-26');
     expect(f.daysCovered).toBe(4);
   });
 
   it('reports no usage when nothing is scheduled', () => {
-    expect(forecastStock(med(), [], TODAY, new Set())).toMatchObject({ runOutDate: null, noUsage: true });
+    expect(forecastStock(med(), [], TODAY, 0)).toMatchObject({ runOutDate: null, noUsage: true });
   });
 
   it('runs out today when stock is already short', () => {
-    expect(forecastStock(med({ stockAmount: 0 }), twiceDaily, TODAY, new Set())).toMatchObject({
+    expect(forecastStock(med({ stockAmount: 0 }), twiceDaily, TODAY, 2)).toMatchObject({
       daysCovered: 0,
       runOutDate: TODAY,
     });

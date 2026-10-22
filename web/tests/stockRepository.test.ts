@@ -15,6 +15,7 @@ import { deletePrescription, savePrescription } from '../src/db/prescriptionRepo
 import type { Medicine, Schedule } from '../src/db/types';
 import { newMedicine } from '../src/domain/medicine';
 import { newTimeSchedule } from '../src/domain/schedule';
+import { timeOcc } from './helpers';
 
 let db: MedicationDB;
 let counter = 0;
@@ -44,7 +45,7 @@ afterEach(async () => {
 });
 
 const take = (s: Schedule, m: Medicine, status: 'TAKEN' | 'SKIPPED' = 'TAKEN', date = DAY) =>
-  recordDoses(db, date, [{ schedule: s, medicine: m, time: '08:00' }], status, 1, '03:00');
+  recordDoses(db, date, [{ occurrence: timeOcc(s, m) }], status, 1);
 
 describe('stock follows dose records', () => {
   it('deducts on take, restores on clear, and records before/after', async () => {

@@ -61,7 +61,6 @@ export interface Schedule {
   interval?: { minutes: number; startAt: number; fromProcessed: boolean };
   window?: { start: TimeOfDay; end: TimeOfDay };
   linked?: { parentScheduleId: number; delayMinutes: number };
-  weekendShift?: { weekdays: boolean[]; time: TimeOfDay };
   sourcePrescriptionId?: number;
 }
 
@@ -91,6 +90,10 @@ export interface DoseEvent {
   stockAfter?: number;
   /** Amount this record currently takes out of the medicine's stock (0/undefined = none). */
   stockDeducted?: number;
+  /** For LINKED schedules: the parent dose record this one follows. */
+  linkedEventId?: number;
+  /** Recorded automatically by an "auto taken" schedule, not confirmed by the user. */
+  auto?: boolean;
   note?: string;
   symptomIds: number[];
 }
@@ -134,6 +137,10 @@ export interface Settings {
   backupIntervalDays: number;
   /** Warn when stock covers this many days or fewer. */
   lowStockDays?: number;
+  /** Weekend mode: on these weekdays (Sunday-first), clock-time doses from `from` (default 00:00) until `time` move to `time`. */
+  weekendShift?: { weekdays: boolean[]; time: TimeOfDay; from?: TimeOfDay };
+  /** Auto-taken schedules have been processed up to this timestamp. */
+  lastAutoTakenAt?: number;
   lastBackupAt?: number;
   pinHash?: string;
   showStockChanges: boolean;

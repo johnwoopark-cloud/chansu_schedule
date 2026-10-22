@@ -4,6 +4,8 @@ import { useLiveQuery } from '../lib/useLiveQuery';
 import { PageHeader } from '../components/PageHeader';
 import { Chip } from '../components/Form';
 import { DEFAULT_LOW_STOCK_DAYS } from '../domain/stock';
+import { WEEKDAY_LABELS, WEEKDAY_ORDER } from '../domain/schedule';
+import { Switch } from '../components/Form';
 
 const LOW_STOCK_DAYS = [3, 5, 7, 10, 14];
 
@@ -54,6 +56,70 @@ export function RecordSettingsPage() {
             </Chip>
           ))}
         </div>
+      </section>
+      <section class="card">
+        <h2>주말 모드</h2>
+        <p class="muted">
+          고른 요일에는 두 시각 사이에 잡힌 복용(시각·복용 시기 일정)을 뒤 시각으로 늦춥니다. 예: 04:00~10:00이면 아침 8시 약이 10시로
+          가고, 새벽 1시 약은 그대로입니다.
+        </p>
+        <Switch
+          label="주말 모드 사용"
+          checked={!!settings.weekendShift}
+          onChange={(v) =>
+            updateSettings(db, {
+              weekendShift: v ? { weekdays: [true, false, false, false, false, false, true], time: '10:00' } : undefined,
+            })
+          }
+        />
+        {settings.weekendShift && (
+          <>
+            <div class="weekday-picker" role="group" aria-label="주말 모드 요일">
+              {WEEKDAY_ORDER.map((day) => {
+                const on = settings.weekendShift!.weekdays[day];
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    aria-pressed={on}
+                    class={on ? 'selected' : undefined}
+                    onClick={() => {
+                      const weekdays = [...settings.weekendShift!.weekdays];
+                      weekdays[day] = !on;
+                      updateSettings(db, { weekendShift: { ...settings.weekendShift!, weekdays } });
+                    }}
+                  >
+                    {WEEKDAY_LABELS[day]}
+                  </button>
+                );
+              })}
+            </div>
+            <div class="input-row">
+              <label class="field">
+                <span class="field-label">이 시각부터</span>
+                <input
+                  type="time"
+                  value={settings.weekendShift.from ?? '00:00'}
+                  onChange={(e) => {
+                    const from = e.currentTarget.value;
+                    if (from) updateSettings(db, { weekendShift: { ...settings.weekendShift!, from } });
+                  }}
+                />
+              </label>
+              <label class="field">
+                <span class="field-label">이 시각으로 늦추기</span>
+                <input
+                  type="time"
+                  value={settings.weekendShift.time}
+                  onChange={(e) => {
+                    const time = e.currentTarget.value;
+                    if (time) updateSettings(db, { weekendShift: { ...settings.weekendShift!, time } });
+                  }}
+                />
+              </label>
+            </div>
+          </>
+        )}
       </section>
     </>
   );

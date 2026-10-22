@@ -1,8 +1,8 @@
 import type { MedicationDB } from './database';
 import { DEFAULT_SETTINGS } from './database';
 import type { DoseEvent, DoseStatus, ISODate, Medicine, Schedule, Settings, Symptom } from './types';
-import { timestampFor } from '../domain/dates';
 import { stockDeduction } from '../domain/stock';
+import { matchesOccurrence, type Occurrence } from '../domain/occurrences';
 
 export async function getSettings(db: MedicationDB): Promise<Settings> {
   return (await db.settings.get('app')) ?? DEFAULT_SETTINGS;
@@ -31,11 +31,10 @@ async function snapshotOf(db: MedicationDB, medicine: Medicine, doseQty: number,
   };
 }
 
-export interface ScheduledDose {
-  schedule: Schedule;
-  medicine: Medicine;
-  /** Planned time of day ("08:00"), from the slot or the schedule. */
-  time: string;
+export interface DoseToRecord {
+  occurrence: Occurrence;
+  /** Amount actually taken, for variable-amount schedules; defaults to the schedule's dose. */
+  doseQty?: number;
 }
 
 /**
@@ -100,45 +99,67 @@ async function withPacketTracking<T>(
 const WRITE_TABLES = (db: MedicationDB) => [db.doseEvents, db.medicines, db.slots, db.tags];
 
 /**
- * Records taken/skipped for scheduled doses on `date`. Existing records for the
- * same schedule and date are updated in place, so re-checking never duplicates.
- * Returns the ids of the events written.
+ * Records taken/skipped for planned doses on `date`. A dose that already has a
+ * record is updated in place, so re-checking never duplicates. Returns the ids
+ * of the records written.
  */
 export async function recordDoses(
   db: MedicationDB,
   date: ISODate,
-  doses: readonly ScheduledDose[],
+  doses: readonly DoseToRecord[],
   status: DoseStatus,
   processedAt: number,
-  cutoff: string,
+  options: { auto?: boolean } = {},
 ): Promise<number[]> {
   return db.transaction('rw', WRITE_TABLES(db), async () => {
     const existing = await db.doseEvents.where('date').equals(date).toArray();
-    const touched = doses.map((d) => ({ date, slotId: d.schedule.slotId }));
+    const touched = doses.map((d) => ({ date, slotId: d.occurrence.slotId }));
     return withPacketTracking(db, touched, async () => {
       const ids: number[] = [];
-      for (const { schedule, medicine, time } of doses) {
-        const prior = existing.find((e) => e.kind === 'SCHEDULED' && e.scheduleId === schedule.id);
-        const after: DoseEvent = prior
-          ? { ...prior, status, processedAt }
-          : ({
-              scheduleId: schedule.id,
-              medicineId: medicine.id!,
-              kind: 'SCHEDULED',
-              date,
-              ...(schedule.slotId !== undefined ? { slotId: schedule.slotId } : {}),
-              scheduledAt: timestampFor(date, time, cutoff),
-              processedAt,
-              status,
-              snapshot: await snapshotOf(db, medicine, schedule.doseQty, schedule.doseUnit),
-              symptomIds: [],
-            } as DoseEvent);
+      for (const { occurrence, doseQty } of doses) {
+        const { schedule, medicine } = occurrence;
+        const prior = existing.find((e) => matchesOccurrence(e, occurrence));
+        let after: DoseEvent;
+        if (prior) {
+          after = { ...prior, status, processedAt };
+          if (doseQty !== undefined) after.snapshot = { ...prior.snapshot, doseQty };
+          if (!options.auto) delete after.auto;
+        } else {
+          after = {
+            scheduleId: schedule.id,
+            medicineId: medicine.id!,
+            kind: 'SCHEDULED',
+            date,
+            ...(occurrence.slotId !== undefined ? { slotId: occurrence.slotId } : {}),
+            scheduledAt: occurrence.at,
+            ...(occurrence.linkedEventId !== undefined ? { linkedEventId: occurrence.linkedEventId } : {}),
+            ...(options.auto ? { auto: true } : {}),
+            processedAt,
+            status,
+            snapshot: await snapshotOf(db, medicine, doseQty ?? schedule.doseQty, schedule.doseUnit),
+            symptomIds: [],
+          } as DoseEvent;
+        }
         await syncStock(db, prior, after);
-        ids.push((await db.doseEvents.put(after)) as number);
+        const id = (await db.doseEvents.put(after)) as number;
+        existing.push({ ...after, id });
+        ids.push(id);
       }
       return ids;
     });
   });
+}
+
+/** Latest processedAt per schedule, for check-time-based interval schedules. */
+export async function lastProcessedTimes(db: MedicationDB, schedules: readonly Schedule[]): Promise<Map<number, number>> {
+  const result = new Map<number, number>();
+  for (const s of schedules) {
+    if (s.type !== 'CONTINUOUS_INTERVAL' || !s.interval?.fromProcessed) continue;
+    const events = await db.doseEvents.where('scheduleId').equals(s.id!).toArray();
+    const times = events.flatMap((e) => (e.kind === 'SCHEDULED' && e.processedAt !== undefined ? [e.processedAt] : []));
+    if (times.length) result.set(s.id!, Math.max(...times));
+  }
+  return result;
 }
 
 /** Removes records, returning their doses to "not checked" and their stock to the medicine. */

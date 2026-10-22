@@ -1,15 +1,8 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { db } from '../db/database';
-import {
-  clearDoses,
-  getSettings,
-  listEventsForDate,
-  listSymptoms,
-  recordDoses,
-  type ScheduledDose,
-} from '../db/doseRepository';
-import { listMedicines, listTags } from '../db/medicineRepository';
-import { listSlots } from '../db/slotRepository';
+import { clearDoses, getSettings, listSymptoms, recordDoses, type DoseToRecord } from '../db/doseRepository';
+import { listTags } from '../db/medicineRepository';
+import { loadDayContext, loadOccurrences } from '../db/dayContext';
 import type { DoseEvent, DoseStatus } from '../db/types';
 import {
   addDays,
@@ -17,14 +10,14 @@ import {
   formatKoreanDate,
   formatKoreanTime,
   logicalDate,
-  minutesIntoDay,
-  timestampFor,
   toISODate,
   toTimeOfDay,
 } from '../domain/dates';
 import { buildDayPlan } from '../domain/dayPlan';
 import { buildDayView, filterDayView, timingFor, type DoseRow, type GroupView, type StateFilter } from '../domain/dayView';
-import { formatDose, formatStrength, medicineTitle } from '../domain/medicine';
+import { formatDose, formatNumber, formatStrength, medicineTitle, parseNumber } from '../domain/medicine';
+import { NumberInput } from '../components/Form';
+import { Sheet } from '../components/Sheet';
 import { useLiveQuery } from '../lib/useLiveQuery';
 import { useNow } from '../lib/useNow';
 import { StorageNotice } from '../components/StorageNotice';
@@ -50,6 +43,7 @@ function groupTitle(g: GroupView): string {
 
 function GroupStatus({ group }: { group: GroupView }) {
   const total = group.taken + group.skipped + group.pending;
+  if (total === 0) return null; // only waiting linked doses; each row says so
   if (group.pending === 0) return <span class="badge done">완료</span>;
   if (group.overdue) return <span class="badge overdue">미체크</span>;
   if (group.taken + group.skipped > 0) {
@@ -69,6 +63,7 @@ export function TodayPage() {
   const [tagId, setTagId] = useState<number | null>(null);
   const [editing, setEditing] = useState<{ event: DoseEvent; canSkip: boolean } | null>(null);
   const [addingExtra, setAddingExtra] = useState(false);
+  const [askingAmount, setAskingAmount] = useState<{ group: GroupView; row: DoseRow } | null>(null);
   const datePicker = useRef<HTMLInputElement>(null);
 
   const settings = useLiveQuery(() => getSettings(db));
@@ -80,36 +75,34 @@ export function TodayPage() {
   const isFuture = offset > 0;
 
   const data = useLiveQuery(async () => {
-    const [slots, medicines, schedules, events, tags, symptoms] = await Promise.all([
-      listSlots(db),
-      listMedicines(db),
-      db.schedules.toArray(),
-      listEventsForDate(db, date),
+    const ctx = await loadDayContext(db, new Date());
+    const [{ events, occurrences }, tags, symptoms] = await Promise.all([
+      loadOccurrences(db, ctx, date),
       listTags(db),
       listSymptoms(db),
     ]);
-    return { slots, medicines, schedules, events, tags, symptoms };
+    return { ...ctx, events, occurrences, tags, symptoms };
   }, [date]);
 
   if (!data || !settings) return null;
 
-  const plan = buildDayPlan(date, data.slots, data.medicines, data.schedules);
-  const view = buildDayView(plan, data.events, timingFor(date, logicalToday, minutesIntoDay(now, logicalToday)));
+  const plan = buildDayPlan(data.occurrences, data.slots);
+  const view = buildDayView(plan, data.events, timingFor(date, logicalToday, now.getTime()));
   const groups = filterDayView(view.groups, stateFilter, tagId);
   const planned = view.totals.taken + view.totals.skipped + view.totals.pending;
-  const usedTagIds = new Set(view.groups.flatMap((g) => g.rows.flatMap((r) => r.medicine.tagIds)));
+  const usedTagIds = new Set(view.groups.flatMap((g) => g.rows.flatMap((r) => r.occurrence.medicine.tagIds)));
   const tags = data.tags.filter((t) => usedTagIds.has(t.id!));
   const unscheduled = data.medicines.filter((m) => m.active && !data.schedules.some((s) => s.medicineId === m.id)).length;
   const upcomingKey = isToday
     ? view.groups.find((g) => g.pending > 0 && !g.overdue)?.key
     : undefined;
 
-  const record = async (group: GroupView, rows: DoseRow[], status: DoseStatus) => {
-    const doses: ScheduledDose[] = rows.map((r) => ({ schedule: r.schedule, medicine: r.medicine, time: group.time }));
+  const record = async (group: GroupView, rows: DoseRow[], status: DoseStatus, doseQty?: number) => {
+    const doses: DoseToRecord[] = rows.map((r) => ({ occurrence: r.occurrence, ...(doseQty !== undefined ? { doseQty } : {}) }));
     // Today: the moment of the tap. Other days: assume the planned time; it can be edited afterwards.
-    const processedAt = isToday ? Date.now() : timestampFor(date, group.time, cutoff);
-    const ids = await recordDoses(db, date, doses, status, processedAt, cutoff);
-    const what = rows.length === 1 ? rows[0].medicine.name : `${groupTitle(group)} ${rows.length}개`;
+    const processedAt = isToday ? Date.now() : Math.min(...rows.map((r) => r.occurrence.at));
+    const ids = await recordDoses(db, date, doses, status, processedAt);
+    const what = rows.length === 1 ? rows[0].occurrence.medicine.name : `${groupTitle(group)} ${rows.length}개`;
     showToast(`${what} ${status === 'TAKEN' ? '복용' : '건너뜀'}으로 기록했습니다.`, {
       label: '되돌리기',
       run: () => clearDoses(db, ids),
@@ -117,6 +110,9 @@ export function TodayPage() {
   };
 
   const openEvent = (event: DoseEvent, canSkip: boolean) => setEditing({ event, canSkip });
+  // Variable-amount doses ask how much was taken before recording.
+  const take = (group: GroupView, row: DoseRow) =>
+    row.occurrence.schedule.variableAmount ? setAskingAmount({ group, row }) : record(group, [row], 'TAKEN');
 
   return (
     <>
@@ -216,68 +212,76 @@ export function TodayPage() {
 
       <ul class="slot-cards">
         {groups.map((group) => {
-          const pendingRows = group.rows.filter((r) => r.state === 'pending');
+          const pendingRows = group.rows.filter((r) => r.state === 'pending' && !r.occurrence.schedule.variableAmount);
           return (
             <li
               key={group.key}
-              class={`slot-card${group.overdue ? ' overdue' : ''}${group.key === upcomingKey ? ' upcoming' : ''}${group.pending === 0 ? ' complete' : ''}`}
+              class={`slot-card${group.overdue ? ' overdue' : ''}${group.key === upcomingKey ? ' upcoming' : ''}${group.pending === 0 && group.taken + group.skipped > 0 ? ' complete' : ''}`}
             >
               <div class="slot-card-head">
                 <h2>{groupTitle(group)}</h2>
                 {group.isSlot && <span class="slot-time">{formatKoreanTime(group.time)}</span>}
+                {group.shifted && <span class="badge muted">주말 모드</span>}
                 <GroupStatus group={group} />
               </div>
               <ul class="dose-list">
-                {group.rows.map((row) => (
-                  <li key={row.schedule.id} class={`dose-row ${row.state}`}>
-                    <MedicineIcon medicine={row.medicine} size={36} />
-                    <div class="dose-text">
-                      <span class="dose-title">{medicineTitle(row.medicine)}</span>
-                      <span class="dose-sub">
-                        {formatDose(row.event?.snapshot.doseQty ?? row.schedule.doseQty, row.schedule.doseUnit)}
-                        {row.schedule.instructions && ` · ${row.schedule.instructions}`}
-                      </span>
-                      {row.event?.note && <span class="dose-note">{row.event.note}</span>}
-                    </div>
-                    {row.state === 'pending' && !isFuture && (
-                      <div class="dose-actions">
-                        {!row.medicine.cannotBeSkipped && (
+                {group.rows.map((row) => {
+                  const { schedule, medicine, waiting } = row.occurrence;
+                  return (
+                    <li key={row.occurrence.key} class={`dose-row ${row.state}`}>
+                      <MedicineIcon medicine={medicine} size={36} />
+                      <div class="dose-text">
+                        <span class="dose-title">{medicineTitle(medicine)}</span>
+                        <span class="dose-sub">
+                          {schedule.variableAmount && !row.event ? '용량 직접 입력' : formatDose(row.event?.snapshot.doseQty ?? schedule.doseQty, schedule.doseUnit)}
+                          {schedule.instructions && ` · ${schedule.instructions}`}
+                        </span>
+                        {waiting && (
+                          <span class="dose-note">
+                            {waiting.parentMedicine.name} 복용 {waiting.delayMinutes}분 후
+                          </span>
+                        )}
+                        {row.event?.note && <span class="dose-note">{row.event.note}</span>}
+                      </div>
+                      {row.state === 'pending' && !isFuture && (
+                        <div class="dose-actions">
+                          {!medicine.cannotBeSkipped && (
+                            <button
+                              type="button"
+                              class="skip-button"
+                              aria-label={`${medicine.name} 건너뜀`}
+                              onClick={() => record(group, [row], 'SKIPPED')}
+                            >
+                              건너뜀
+                            </button>
+                          )}
                           <button
                             type="button"
-                            class="skip-button"
-                            aria-label={`${row.medicine.name} 건너뜀`}
-                            onClick={() => record(group, [row], 'SKIPPED')}
+                            class="check-button"
+                            aria-label={`${medicine.name} 복용`}
+                            onClick={() => take(group, row)}
                           >
-                            건너뜀
+                            <Icon name="check" size={22} />
                           </button>
-                        )}
+                        </div>
+                      )}
+                      {row.state === 'waiting' && <span class="badge muted">대기</span>}
+                      {row.event && (
                         <button
                           type="button"
-                          class="check-button"
-                          aria-label={`${row.medicine.name} 복용`}
-                          onClick={() => record(group, [row], 'TAKEN')}
+                          class={`status-pill ${row.state}`}
+                          aria-label={`${medicine.name} 기록 수정`}
+                          onClick={() => openEvent(row.event!, !medicine.cannotBeSkipped)}
                         >
-                          <Icon name="check" size={22} />
+                          <Icon name={row.state === 'taken' ? 'check' : 'skip'} size={16} />
+                          {row.state === 'taken'
+                            ? `${row.event.auto ? '자동 ' : ''}${row.event.processedAt ? toTimeOfDay(row.event.processedAt) : '복용'}`
+                            : '건너뜀'}
                         </button>
-                      </div>
-                    )}
-                    {row.event && (
-                      <button
-                        type="button"
-                        class={`status-pill ${row.state}`}
-                        aria-label={`${row.medicine.name} 기록 수정`}
-                        onClick={() => openEvent(row.event!, !row.medicine.cannotBeSkipped)}
-                      >
-                        <Icon name={row.state === 'taken' ? 'check' : 'skip'} size={16} />
-                        {row.state === 'taken'
-                          ? row.event.processedAt
-                            ? toTimeOfDay(row.event.processedAt)
-                            : '복용'
-                          : '건너뜀'}
-                      </button>
-                    )}
-                  </li>
-                ))}
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
               {pendingRows.length > 1 && !isFuture && (
                 <button type="button" class="button primary block take-all" onClick={() => record(group, pendingRows, 'TAKEN')}>
@@ -334,6 +338,14 @@ export function TodayPage() {
         cutoff={cutoff}
         onClose={() => setEditing(null)}
       />
+      <AmountSheet
+        request={askingAmount}
+        onClose={() => setAskingAmount(null)}
+        onConfirm={(qty) => {
+          if (askingAmount) record(askingAmount.group, [askingAmount.row], 'TAKEN', qty);
+          setAskingAmount(null);
+        }}
+      />
       <ExtraDoseSheet
         open={addingExtra}
         date={date}
@@ -344,5 +356,48 @@ export function TodayPage() {
         onClose={() => setAddingExtra(false)}
       />
     </>
+  );
+}
+
+function AmountSheet({
+  request,
+  onClose,
+  onConfirm,
+}: {
+  request: { row: DoseRow } | null;
+  onClose: () => void;
+  onConfirm: (qty: number) => void;
+}) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const schedule = request?.row.occurrence.schedule;
+  useEffect(() => {
+    if (!schedule) return;
+    setText(formatNumber(schedule.doseQty));
+    setError(null);
+  }, [request]);
+  return (
+    <Sheet open={!!request} title={request ? `${request.row.occurrence.medicine.name} 복용량` : ''} onClose={onClose}>
+      <form
+        class="sheet-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const qty = parseNumber(text);
+          if (qty === undefined || Number.isNaN(qty) || qty <= 0) return setError('0보다 큰 숫자를 입력하세요.');
+          onConfirm(qty);
+        }}
+      >
+        <div class="inline-input">
+          <NumberInput value={text} ariaLabel="복용량" onInput={setText} />
+          <span>{schedule?.doseUnit}</span>
+        </div>
+        {error && <p class="form-error">{error}</p>}
+        <div class="sheet-actions">
+          <button type="submit" class="button primary">
+            복용 기록
+          </button>
+        </div>
+      </form>
+    </Sheet>
   );
 }
