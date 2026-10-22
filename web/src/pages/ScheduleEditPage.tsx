@@ -7,6 +7,7 @@ import { DOSE_UNITS, formatNumber, medicineTitle, parseNumber } from '../domain/
 import { EVERY_DAY, WEEKDAY_LABELS, WEEKDAY_ORDER, newTimeSchedule, type ScheduleErrors } from '../domain/schedule';
 import { formatKoreanTime } from '../domain/dates';
 import { PageHeader } from '../components/PageHeader';
+import { unitsMatch } from '../domain/stock';
 import { Chip, Field, NumberInput, Segmented, SuggestInput, Switch } from '../components/Form';
 import { Icon } from '../components/Icon';
 import { goBackTo, href } from '../router';
@@ -156,6 +157,11 @@ export function ScheduleEditPage({ medicineId, id }: { medicineId: number; id: n
               />
             </div>
           </Field>
+          {medicine.trackStock && !unitsMatch(draft.doseUnit, medicine.stockUnit) && (
+            <p class="field-hint warn-text">
+              재고 단위({medicine.stockUnit})와 달라서 이 일정은 재고를 줄이지 않습니다.
+            </p>
+          )}
           <Field label="복용 안내">
             <input
               value={draft.instructions}

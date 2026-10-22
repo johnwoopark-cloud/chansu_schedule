@@ -14,19 +14,24 @@ function errorMessage(result: SlotResult): string | null {
   return SLOT_ERROR_MESSAGES[result.error];
 }
 
+type SlotDraft = Pick<Slot, 'label' | 'time'> & { packetStock?: number | null };
+
 function SlotForm({
   initial,
   submitLabel,
   onSubmit,
   onCancel,
+  withPackets = false,
 }: {
-  initial: Pick<Slot, 'label' | 'time'>;
+  initial: Pick<Slot, 'label' | 'time' | 'packetStock'>;
   submitLabel: string;
-  onSubmit: (draft: Pick<Slot, 'label' | 'time'>) => Promise<SlotResult>;
+  onSubmit: (draft: SlotDraft) => Promise<SlotResult>;
   onCancel?: () => void;
+  withPackets?: boolean;
 }) {
   const [label, setLabel] = useState(initial.label);
   const [time, setTime] = useState(initial.time);
+  const [packets, setPackets] = useState(initial.packetStock === undefined ? '' : String(initial.packetStock));
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -34,7 +39,16 @@ function SlotForm({
       class="slot-form"
       onSubmit={async (e) => {
         e.preventDefault();
-        const result = await onSubmit({ label, time });
+        let packetStock: number | null | undefined;
+        if (withPackets) {
+          if (!packets.trim()) packetStock = null;
+          else if (/^\d+$/.test(packets.trim())) packetStock = Number(packets.trim());
+          else {
+            setError('약봉투 재고는 0 이상의 정수로 입력하세요.');
+            return;
+          }
+        }
+        const result = await onSubmit({ label, time, packetStock });
         setError(errorMessage(result));
         if (result.ok && !onCancel) {
           setLabel('');
@@ -56,6 +70,12 @@ function SlotForm({
         <span>기준 시각</span>
         <input type="time" value={time} onInput={(e) => setTime(e.currentTarget.value)} required />
       </label>
+      {withPackets && (
+        <label>
+          <span>약봉투 재고 (비우면 관리 안 함)</span>
+          <input inputMode="numeric" value={packets} placeholder="예: 14" onInput={(e) => setPackets(e.currentTarget.value)} />
+        </label>
+      )}
       {error && (
         <p class="form-error" role="alert">
           {error}
@@ -100,6 +120,7 @@ export function SlotsPage() {
             <li key={slot.id} class="slot-row editing">
               <SlotForm
                 initial={slot}
+                withPackets
                 submitLabel="저장"
                 onSubmit={async (draft) => {
                   const result = await updateSlot(db, slot.id!, draft);
@@ -121,6 +142,7 @@ export function SlotsPage() {
               >
                 <span class="slot-row-label">{slot.label}</span>
                 <span class="slot-time">{formatKoreanTime(slot.time)}</span>
+                {slot.packetStock !== undefined && <span class="badge muted">봉지 {slot.packetStock}</span>}
               </button>
               <div class="slot-row-actions">
                 <button

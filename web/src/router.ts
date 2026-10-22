@@ -6,6 +6,7 @@ export type Route =
   | { page: 'medicine'; id: number | 'new' }
   | { page: 'schedule'; medicineId: number; id: number | 'new' }
   | { page: 'prescriptions' }
+  | { page: 'prescription'; id: number | 'new' }
   | { page: 'analysis' }
   | { page: 'more' }
   | { page: 'slots' }
@@ -22,7 +23,7 @@ function parseId(value: string | undefined): number | 'new' | null {
  * Routes:
  *   #/today  #/medicines  #/medicines/new  #/medicines/12
  *   #/medicines/12/schedules/new  #/medicines/12/schedules/5
- *   #/prescriptions  #/analysis  #/more  #/slots  #/symptoms  #/record-settings
+ *   #/prescriptions  #/prescriptions/new  #/prescriptions/3  #/analysis  #/more  #/slots  #/symptoms  #/record-settings
  */
 export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -38,7 +39,12 @@ export function parseHash(hash: string): Route {
       }
       break;
     }
-    case 'prescriptions':
+    case 'prescriptions': {
+      if (parts.length === 1) return { page: 'prescriptions' };
+      const id = parseId(parts[1]);
+      if (id !== null && parts.length === 2) return { page: 'prescription', id };
+      break;
+    }
     case 'analysis':
     case 'more':
     case 'slots':
@@ -57,6 +63,8 @@ export function href(route: Route): string {
       return `#/medicines/${route.id}`;
     case 'schedule':
       return `#/medicines/${route.medicineId}/schedules/${route.id}`;
+    case 'prescription':
+      return `#/prescriptions/${route.id}`;
     default:
       return `#/${route.page}`;
   }

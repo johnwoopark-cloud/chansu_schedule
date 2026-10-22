@@ -3,6 +3,9 @@ import { getSettings, updateSettings } from '../db/doseRepository';
 import { useLiveQuery } from '../lib/useLiveQuery';
 import { PageHeader } from '../components/PageHeader';
 import { Chip } from '../components/Form';
+import { DEFAULT_LOW_STOCK_DAYS } from '../domain/stock';
+
+const LOW_STOCK_DAYS = [3, 5, 7, 10, 14];
 
 const CUTOFFS = [
   { value: '00:00', label: '사용 안 함' },
@@ -18,7 +21,7 @@ export function RecordSettingsPage() {
   if (!settings) return null;
   return (
     <>
-      <PageHeader title="자정 넘김 설정" back={{ page: 'more' }} />
+      <PageHeader title="기록·재고 설정" back={{ page: 'more' }} />
       <section class="card">
         <h2>하루가 바뀌는 시각</h2>
         <p class="muted">
@@ -33,6 +36,21 @@ export function RecordSettingsPage() {
               onClick={() => updateSettings(db, { lateNightCutoff: c.value })}
             >
               {c.label}
+            </Chip>
+          ))}
+        </div>
+      </section>
+      <section class="card">
+        <h2>재고 경고</h2>
+        <p class="muted">남은 약이 이 일수 이하로 버틸 때 오늘 화면에 경고합니다.</p>
+        <div class="chips" role="radiogroup" aria-label="재고 경고 일수">
+          {LOW_STOCK_DAYS.map((d) => (
+            <Chip
+              key={d}
+              selected={(settings.lowStockDays ?? DEFAULT_LOW_STOCK_DAYS) === d}
+              onClick={() => updateSettings(db, { lowStockDays: d })}
+            >
+              {d}일
             </Chip>
           ))}
         </div>

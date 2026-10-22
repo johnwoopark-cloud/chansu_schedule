@@ -34,6 +34,8 @@ import { Chip } from '../components/Form';
 import { DoseEventSheet } from '../components/DoseEventSheet';
 import { ExtraDoseSheet } from '../components/ExtraDoseSheet';
 import { showToast } from '../components/Toast';
+import { StockWarnings } from '../components/StockWarnings';
+import { useStockOverview } from '../lib/useStockOverview';
 import { href } from '../router';
 
 const STATE_FILTERS: { value: StateFilter; label: string }[] = [
@@ -70,6 +72,7 @@ export function TodayPage() {
   const datePicker = useRef<HTMLInputElement>(null);
 
   const settings = useLiveQuery(() => getSettings(db));
+  const stock = useStockOverview(now);
   const cutoff = settings?.lateNightCutoff ?? '00:00';
   const logicalToday = logicalDate(now, cutoff);
   const date = addDays(logicalToday, offset);
@@ -160,6 +163,8 @@ export function TodayPage() {
       )}
 
       <StorageNotice />
+
+      {isToday && stock && <StockWarnings warnings={stock.warnings} />}
 
       {data.medicines.length === 0 && (
         <section class="empty-state">

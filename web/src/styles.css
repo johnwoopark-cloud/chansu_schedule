@@ -1217,3 +1217,209 @@ details.card[open] summary::after {
   font-weight: 700;
   cursor: pointer;
 }
+
+/* ---------- Stage 4: stock and prescriptions ---------- */
+.warn-text {
+  color: var(--warn-text);
+}
+
+.warnings {
+  margin-bottom: 16px;
+}
+
+.warnings ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.warnings a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 10px 8px 12px;
+  border-radius: 10px;
+  background: var(--warn-soft);
+  color: var(--warn-text);
+  font-size: 0.92rem;
+  text-decoration: none;
+}
+
+.warnings a span {
+  flex: 1;
+}
+
+.warnings li.urgent a {
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.warnings-more {
+  margin-top: 4px;
+  padding: 6px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.stock-amount {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stock-amount.empty {
+  color: var(--danger);
+}
+
+.card > .stock-forecast {
+  margin-top: 0;
+  color: var(--text-muted);
+}
+
+.stock-forecast.low {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.packet-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.packet-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.packet-slot {
+  flex: 1;
+  font-weight: 600;
+}
+
+.packet-count {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.packet-days {
+  min-width: 4.5em;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.packet-list li.low .packet-days,
+.packet-list li.low .packet-count {
+  color: var(--danger);
+}
+
+.prescription-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prescription-list a {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-decoration: none;
+}
+
+.prescription-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.prescription-date {
+  font-weight: 700;
+}
+
+.prescription-items {
+  font-size: 0.92rem;
+}
+
+.pick-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pick-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  border-top: 1px solid var(--border);
+}
+
+.pick-list li:first-child {
+  border-top: 0;
+}
+
+.pick-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  cursor: pointer;
+}
+
+.pick-label input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+
+.pick-list li.selected .pick-label {
+  font-weight: 600;
+}
+
+.pick-qty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 9.5em;
+}
+
+.card .pick-qty input {
+  min-height: 40px;
+  text-align: right;
+}
+
+.pick-qty span {
+  min-width: 2em;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.pick-text {
+  display: grid;
+}
+
+.pick-sub {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}

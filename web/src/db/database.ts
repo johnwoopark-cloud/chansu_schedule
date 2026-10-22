@@ -59,6 +59,20 @@ export class MedicationDB extends Dexie {
         }
       });
 
+    // v3: stock tracking flag (stage 4). Medicines that already had stock entered start tracked.
+    this.version(3)
+      .stores({})
+      .upgrade((tx) =>
+        tx
+          .table('medicines')
+          .toCollection()
+          .modify((m: Medicine) => {
+            if (m.trackStock === undefined) {
+              m.trackStock = m.stockAmount > 0 || m.stockThreshold > 0 || m.refillSizes.length > 0;
+            }
+          }),
+      );
+
     this.on('populate', (tx) => {
       tx.table('slots').bulkAdd(DEFAULT_SLOTS.map((s) => ({ ...s })));
       tx.table('settings').add({ ...DEFAULT_SETTINGS });

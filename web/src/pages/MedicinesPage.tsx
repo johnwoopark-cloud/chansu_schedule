@@ -11,6 +11,9 @@ import { MedicineIcon } from '../components/MedicineIcon';
 import { Icon } from '../components/Icon';
 import { Chip, Segmented } from '../components/Form';
 import { href } from '../router';
+import { useNow } from '../lib/useNow';
+import { useStockOverview } from '../lib/useStockOverview';
+import { formatStock } from '../components/StockText';
 
 type Filter = 'active' | 'stopped';
 
@@ -33,7 +36,9 @@ export function MedicinesPage() {
     ]);
     return { medicines, schedules, tags, slots };
   });
-  const today = toISODate(new Date());
+  const now = useNow();
+  const stock = useStockOverview(now);
+  const today = toISODate(now);
 
   const medicines = data?.medicines ?? [];
   const counts = {
@@ -96,15 +101,21 @@ export function MedicinesPage() {
       <ul class="medicine-list">
         {visible.map((m) => {
           const summary = scheduleSummary(schedulesOf(m));
+          const forecast = stock?.forecasts.get(m.id!);
+          const lowDays = !!forecast && !forecast.noUsage && forecast.daysCovered <= (stock?.lowStockDays ?? 0);
           return (
             <li key={m.id}>
               <a href={href({ page: 'medicine', id: m.id! })}>
                 <MedicineIcon medicine={m} />
                 <div class="medicine-list-body">
                   <span class="medicine-list-title">{medicineTitle(m)}</span>
-                  <span class={`medicine-list-sub${summary.paused ? ' paused' : ''}`}>{summary.text}</span>
+                  <span class={`medicine-list-sub${summary.paused ? ' paused' : ''}`}>
+                    {summary.text}
+                    {m.trackStock && ` · 재고 ${formatStock(m)}`}
+                    {forecast && !forecast.noUsage && forecast.runOutDate && ` · ${forecast.daysCovered}일분`}
+                  </span>
                   <span class="medicine-list-badges">
-                    {isLowStock(m) && <span class="badge warn">재고 부족</span>}
+                    {(isLowStock(m) || lowDays) && <span class="badge warn">재고 부족</span>}
                     {isExpired(m, today) && <span class="badge warn">유효기간 지남</span>}
                     {m.tagIds.map((id) => tagName.get(id) && <span key={id} class="badge muted">{tagName.get(id)}</span>)}
                   </span>

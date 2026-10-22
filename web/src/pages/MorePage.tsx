@@ -8,7 +8,7 @@ import { href } from '../router';
 const LINKS: { page: 'slots' | 'symptoms' | 'record-settings'; label: string; icon: IconName }[] = [
   { page: 'slots', label: '복용 시기 설정', icon: 'clock' },
   { page: 'symptoms', label: '증상 태그 관리', icon: 'tag' },
-  { page: 'record-settings', label: '자정 넘김 설정', icon: 'today' },
+  { page: 'record-settings', label: '기록·재고 설정', icon: 'today' },
 ];
 
 const UPCOMING: { label: string; stage: number }[] = [

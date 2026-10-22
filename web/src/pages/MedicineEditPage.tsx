@@ -26,6 +26,13 @@ import { fromDraft, toDraft, type MedicineDraft } from '../domain/medicineDraft'
 import { describeSchedule } from '../domain/schedule';
 import { formatDose } from '../domain/medicine';
 import { useLiveQuery } from '../lib/useLiveQuery';
+import { useNow } from '../lib/useNow';
+import { useStockOverview } from '../lib/useStockOverview';
+import { refillMedicine, undoRefill } from '../db/doseRepository';
+import { logicalDate } from '../domain/dates';
+import { formatNumber, parseNumber as parseNum } from '../domain/medicine';
+import { forecastText, formatStock } from '../components/StockText';
+import { showToast } from '../components/Toast';
 import { PageHeader } from '../components/PageHeader';
 import { Icon } from '../components/Icon';
 import { MedicineIcon } from '../components/MedicineIcon';
@@ -82,6 +89,70 @@ function SchedulesSection({ medicineId }: { medicineId: number }) {
   );
 }
 
+function StockSection({ medicineId, onChanged }: { medicineId: number; onChanged: () => void }) {
+  const now = useNow();
+  const overview = useStockOverview(now);
+  const medicine = useLiveQuery(() => db.medicines.get(medicineId), [medicineId]);
+  const [custom, setCustom] = useState('');
+  if (!medicine?.trackStock || !overview) return null;
+  const forecast = overview.forecasts.get(medicineId);
+  const low = forecast && !forecast.noUsage && forecast.daysCovered <= overview.lowStockDays;
+
+  const refill = async (qty: number) => {
+    const id = await refillMedicine(db, medicineId, qty, logicalDate(new Date(), '00:00'), Date.now());
+    onChanged();
+    showToast(`${formatNumber(qty)}${medicine.stockUnit} 추가했습니다.`, {
+      label: '되돌리기',
+      run: async () => {
+        await undoRefill(db, id);
+        onChanged();
+      },
+    });
+  };
+
+  return (
+    <section class="card stock-card">
+      <div class="card-head">
+        <h2>재고</h2>
+        <a class="button small" href={href({ page: 'prescription', id: 'new' })}>
+          조제 기록
+        </a>
+      </div>
+      <p class={`stock-amount${medicine.stockAmount <= 0 ? ' empty' : ''}`}>{formatStock(medicine)}</p>
+      <p class={`stock-forecast${low ? ' low' : ''}`}>{forecastText(forecast)}</p>
+      <div class="chips">
+        {medicine.refillSizes.map((size) => (
+          <button key={size} type="button" class="chip" onClick={() => refill(size)}>
+            +{formatNumber(size)}
+            {medicine.stockUnit}
+          </button>
+        ))}
+      </div>
+      <div class="inline-input">
+        <input
+          inputMode="decimal"
+          value={custom}
+          placeholder="받은 양"
+          aria-label="리필 수량"
+          onInput={(e) => setCustom(e.currentTarget.value)}
+        />
+        <button
+          type="button"
+          class="button small"
+          onClick={() => {
+            const qty = parseNum(custom);
+            if (qty === undefined || Number.isNaN(qty) || qty <= 0) return;
+            setCustom('');
+            refill(qty);
+          }}
+        >
+          리필
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function TagEditor({ selected, onChange }: { selected: number[]; onChange: (ids: number[]) => void }) {
   const tags = useLiveQuery(() => listTags(db));
   const [text, setText] = useState('');
@@ -134,6 +205,9 @@ export function MedicineEditPage({ id }: { id: number | 'new' }) {
   const [missing, setMissing] = useState(false);
   const [errors, setErrors] = useState<MedicineErrors>({});
   const [status, setStatus] = useState<string | null>(null);
+  // Stock as last loaded; if the field still shows this on save, keep whatever the DB has now
+  // (refills and dose checks may have changed it while the form was open).
+  const [loadedStock, setLoadedStock] = useState('');
   const isNew = id === 'new';
 
   useEffect(() => {
@@ -146,8 +220,11 @@ export function MedicineEditPage({ id }: { id: number | 'new' }) {
       }
       const medicine = await db.medicines.get(id);
       if (cancelled) return;
-      if (medicine) setDraft(toDraft(medicine));
-      else setMissing(true);
+      if (medicine) {
+        const d = toDraft(medicine);
+        setDraft(d);
+        setLoadedStock(d.stockAmount);
+      } else setMissing(true);
     })();
     return () => {
       cancelled = true;
@@ -183,6 +260,10 @@ export function MedicineEditPage({ id }: { id: number | 'new' }) {
       setStatus('입력값을 확인하세요.');
       return;
     }
+    if (medicine.id !== undefined && draft.stockAmount === loadedStock) {
+      const current = await db.medicines.get(medicine.id);
+      if (current) medicine.stockAmount = current.stockAmount;
+    }
     const result = await saveMedicine(db, medicine);
     if (!result.ok) {
       setErrors(result.errors);
@@ -193,6 +274,12 @@ export function MedicineEditPage({ id }: { id: number | 'new' }) {
       navigate({ page: 'medicine', id: result.id }, true);
       navigate({ page: 'schedule', medicineId: result.id, id: 'new' });
     } else {
+      const saved = await db.medicines.get(result.id);
+      if (saved) {
+        const d = toDraft(saved);
+        setDraft(d);
+        setLoadedStock(d.stockAmount);
+      }
       setStatus('저장했습니다.');
     }
   };
@@ -207,6 +294,15 @@ export function MedicineEditPage({ id }: { id: number | 'new' }) {
     }
     await pruneUnusedTags(db);
     goBackTo({ page: 'medicines' });
+  };
+
+  const reloadStock = async () => {
+    if (typeof id !== 'number') return;
+    const m = await db.medicines.get(id);
+    if (!m) return;
+    const fresh = toDraft(m);
+    setDraft((d) => (d ? { ...d, stockAmount: fresh.stockAmount, trackStock: fresh.trackStock } : d));
+    setLoadedStock(fresh.stockAmount);
   };
 
   const toggleActive = async () => {
@@ -224,6 +320,7 @@ export function MedicineEditPage({ id }: { id: number | 'new' }) {
       )}
 
       {typeof id === 'number' && <SchedulesSection medicineId={id} />}
+      {typeof id === 'number' && <StockSection medicineId={id} onChanged={reloadStock} />}
 
       <form class="medicine-form" onSubmit={save} noValidate>
         <section class="card">
@@ -296,30 +393,38 @@ export function MedicineEditPage({ id }: { id: number | 'new' }) {
         </section>
 
         <section class="card">
-          <h2>재고</h2>
-          <Field label="현재 남은 양" error={errors.stockAmount}>
-            <div class="input-row">
-              <NumberInput value={draft.stockAmount} placeholder="0" ariaLabel="현재 남은 양" onInput={(v) => set('stockAmount', v)} />
-              <SuggestInput
-                id="stock-units"
-                value={draft.stockUnit}
-                options={STOCK_UNITS}
-                ariaLabel="재고 단위"
-                onInput={(v) => set('stockUnit', v)}
-              />
-            </div>
-          </Field>
-          <Field label="부족 경고 기준" error={errors.stockThreshold} hint="남은 양이 이 값 이하가 되면 경고합니다. 비워 두면 경고하지 않습니다.">
-            <NumberInput value={draft.stockThreshold} placeholder="예: 7" onInput={(v) => set('stockThreshold', v)} />
-          </Field>
-          <Field label="리필 크기" error={errors.refillSizes} hint="한 번에 받는 양. 여러 개는 쉼표로 구분 (예: 30, 90)">
-            <input
-              inputMode="decimal"
-              value={draft.refillSizes}
-              placeholder="예: 30"
-              onInput={(e) => set('refillSizes', e.currentTarget.value)}
-            />
-          </Field>
+          <h2>{isNew ? '재고' : '재고 설정'}</h2>
+          <Switch label="재고 관리" checked={draft.trackStock} onChange={(v) => set('trackStock', v)} />
+          {!draft.trackStock && (
+            <p class="field-hint">켜면 복용을 체크할 때마다 남은 양이 줄고, 떨어지는 날을 알려 줍니다.</p>
+          )}
+          {draft.trackStock && (
+            <>
+              <Field label="현재 남은 양" error={errors.stockAmount}>
+                <div class="input-row">
+                  <NumberInput value={draft.stockAmount} placeholder="0" ariaLabel="현재 남은 양" onInput={(v) => set('stockAmount', v)} />
+                  <SuggestInput
+                    id="stock-units"
+                    value={draft.stockUnit}
+                    options={STOCK_UNITS}
+                    ariaLabel="재고 단위"
+                    onInput={(v) => set('stockUnit', v)}
+                  />
+                </div>
+              </Field>
+              <Field label="부족 경고 기준" error={errors.stockThreshold} hint="남은 양이 이 값 이하가 되면 경고합니다. 비워 두면 남은 일수로만 경고합니다.">
+                <NumberInput value={draft.stockThreshold} placeholder="예: 7" onInput={(v) => set('stockThreshold', v)} />
+              </Field>
+              <Field label="리필 크기" error={errors.refillSizes} hint="한 번에 받는 양. 여러 개는 쉼표로 구분 (예: 30, 90)">
+                <input
+                  inputMode="decimal"
+                  value={draft.refillSizes}
+                  placeholder="예: 30"
+                  onInput={(e) => set('refillSizes', e.currentTarget.value)}
+                />
+              </Field>
+            </>
+          )}
         </section>
 
         <section class="card">

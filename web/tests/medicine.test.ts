@@ -53,8 +53,9 @@ describe('display helpers', () => {
     expect(medicineTitle({ name: '비타민' })).toBe('비타민');
     expect(isExpired({ expirationDate: '2026-10-21' }, '2026-10-22')).toBe(true);
     expect(isExpired({ expirationDate: '2026-10-22' }, '2026-10-22')).toBe(false);
-    expect(isLowStock({ stockAmount: 5, stockThreshold: 5 })).toBe(true);
-    expect(isLowStock({ stockAmount: 0, stockThreshold: 0 })).toBe(false);
+    expect(isLowStock({ trackStock: true, stockAmount: 5, stockThreshold: 5 })).toBe(true);
+    expect(isLowStock({ trackStock: false, stockAmount: 5, stockThreshold: 5 })).toBe(false);
+    expect(isLowStock({ trackStock: true, stockAmount: 0, stockThreshold: 0 })).toBe(false);
   });
 });
 

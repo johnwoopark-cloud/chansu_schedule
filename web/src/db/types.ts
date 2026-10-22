@@ -15,6 +15,8 @@ export interface Medicine {
   active: boolean;
   strength?: number;
   strengthUnit?: string;
+  /** When true, taken doses are deducted from stockAmount. */
+  trackStock?: boolean;
   stockAmount: number;
   stockUnit: string;
   refillSizes: number[];
@@ -87,6 +89,8 @@ export interface DoseEvent {
   };
   stockBefore?: number;
   stockAfter?: number;
+  /** Amount this record currently takes out of the medicine's stock (0/undefined = none). */
+  stockDeducted?: number;
   note?: string;
   symptomIds: number[];
 }
@@ -128,6 +132,8 @@ export interface Settings {
   analysisRange: number;
   activeAnalysisView: AnalysisView;
   backupIntervalDays: number;
+  /** Warn when stock covers this many days or fewer. */
+  lowStockDays?: number;
   lastBackupAt?: number;
   pinHash?: string;
   showStockChanges: boolean;

@@ -38,6 +38,7 @@ export function newMedicine(sortOrder: number): Omit<Medicine, 'id'> {
     icon: 'tablet',
     sortOrder,
     active: true,
+    trackStock: false,
     stockAmount: 0,
     stockUnit: '정',
     refillSizes: [],
@@ -117,6 +118,6 @@ export function isExpired(m: Pick<Medicine, 'expirationDate'>, today: string): b
   return !!m.expirationDate && m.expirationDate < today;
 }
 
-export function isLowStock(m: Pick<Medicine, 'stockAmount' | 'stockThreshold'>): boolean {
-  return m.stockThreshold > 0 && m.stockAmount <= m.stockThreshold;
+export function isLowStock(m: Pick<Medicine, 'stockAmount' | 'stockThreshold' | 'trackStock'>): boolean {
+  return !!m.trackStock && m.stockThreshold > 0 && m.stockAmount <= m.stockThreshold;
 }

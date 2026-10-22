@@ -11,6 +11,7 @@ export interface MedicineDraft {
   icon: string;
   color: string;
   useColor: boolean;
+  trackStock: boolean;
   stockAmount: string;
   stockUnit: string;
   stockThreshold: string;
@@ -37,6 +38,7 @@ export function toDraft(m: Omit<Medicine, 'id'> & { id?: number }): MedicineDraf
     icon: m.icon,
     color: m.color,
     useColor: m.useColor,
+    trackStock: !!m.trackStock,
     stockAmount: m.stockAmount ? num(m.stockAmount) : '',
     stockUnit: m.stockUnit,
     stockThreshold: m.stockThreshold ? num(m.stockThreshold) : '',
@@ -64,6 +66,7 @@ export function fromDraft(d: MedicineDraft): { medicine: Omit<Medicine, 'id'> & 
     useColor: d.useColor,
     sortOrder: d.sortOrder,
     active: d.active,
+    trackStock: d.trackStock,
     stockAmount: parseNumber(d.stockAmount) ?? 0,
     stockUnit: d.stockUnit.trim(),
     refillSizes: refillSizes ?? [],

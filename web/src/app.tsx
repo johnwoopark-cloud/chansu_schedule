@@ -10,6 +10,8 @@ import { ScheduleEditPage } from './pages/ScheduleEditPage';
 import { SymptomsPage } from './pages/SymptomsPage';
 import { RecordSettingsPage } from './pages/RecordSettingsPage';
 import { ToastHost } from './components/Toast';
+import { PrescriptionsPage } from './pages/PrescriptionsPage';
+import { PrescriptionEditPage } from './pages/PrescriptionEditPage';
 
 export function App() {
   const route = useRoute();
@@ -22,9 +24,8 @@ export function App() {
         {route.page === 'schedule' && (
           <ScheduleEditPage key={`${route.medicineId}-${route.id}`} medicineId={route.medicineId} id={route.id} />
         )}
-        {route.page === 'prescriptions' && (
-          <PlaceholderPage title="조제" stage={4} description="약을 받아 온 날짜, 병원·약국, 처방 일수와 약봉투 수를 기록합니다." />
-        )}
+        {route.page === 'prescriptions' && <PrescriptionsPage />}
+        {route.page === 'prescription' && <PrescriptionEditPage key={route.id} id={route.id} />}
         {route.page === 'analysis' && (
           <PlaceholderPage title="분석" stage={6} description="복용률 차트, 기록 표, 달력, 체내 농도 추정 그래프를 봅니다." />
         )}

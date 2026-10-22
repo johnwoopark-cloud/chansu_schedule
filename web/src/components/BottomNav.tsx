@@ -16,6 +16,7 @@ const PARENT: Partial<Record<Route['page'], Route['page']>> = {
   'record-settings': 'more',
   medicine: 'medicines',
   schedule: 'medicines',
+  prescription: 'prescriptions',
 };
 
 export function BottomNav({ route }: { route: Route }) {

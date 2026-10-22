@@ -18,16 +18,25 @@ export async function addSlot(db: MedicationDB, draft: Pick<Slot, 'label' | 'tim
   });
 }
 
+/**
+ * Updates a slot. `packetStock`: a number sets the packet count, null stops
+ * tracking packets, undefined leaves it unchanged.
+ */
 export async function updateSlot(
   db: MedicationDB,
   id: number,
-  draft: Pick<Slot, 'label' | 'time'>,
+  draft: Pick<Slot, 'label' | 'time'> & { packetStock?: number | null },
 ): Promise<SlotResult> {
   return db.transaction('rw', db.slots, async () => {
     const others = (await db.slots.toArray()).filter((s) => s.id !== id);
     const error = validateSlot(draft, others);
     if (error) return { ok: false, error };
-    await db.slots.update(id, { label: draft.label.trim(), time: draft.time });
+    const slot = await db.slots.get(id);
+    if (!slot) return { ok: true };
+    const next: Slot = { ...slot, label: draft.label.trim(), time: draft.time };
+    if (draft.packetStock === null) delete next.packetStock;
+    else if (draft.packetStock !== undefined) next.packetStock = draft.packetStock;
+    await db.slots.put(next);
     return { ok: true };
   });
 }
