@@ -1,0 +1,27 @@
+{
+  "name": "medication-log",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dexie": "4.4.6",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.7",
+    "@preact/preset-vite": "2.10.6",
+    "@types/node": "22.20.5",
+    "fake-indexeddb": "6.2.6",
+    "typescript": "5.9.3",
+    "vite": "8.3.4",
+    "vite-plugin-pwa": "1.3.0",
+    "vitest": "4.1.11"
+  }
+}
