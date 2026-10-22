@@ -10,7 +10,11 @@ const TABS: { page: Route['page']; label: string; icon: IconName }[] = [
 ];
 
 /** Sub-pages that highlight their parent tab. */
-const PARENT: Partial<Record<Route['page'], Route['page']>> = { slots: 'more' };
+const PARENT: Partial<Record<Route['page'], Route['page']>> = {
+  slots: 'more',
+  medicine: 'medicines',
+  schedule: 'medicines',
+};
 
 export function BottomNav({ route }: { route: Route }) {
   const active = PARENT[route.page] ?? route.page;

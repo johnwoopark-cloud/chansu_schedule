@@ -7,7 +7,6 @@ import { formatKoreanTime } from '../domain/dates';
 import { useLiveQuery } from '../lib/useLiveQuery';
 import { PageHeader } from '../components/PageHeader';
 import { Icon } from '../components/Icon';
-import { href } from '../router';
 
 function errorMessage(result: SlotResult): string | null {
   if (result.ok) return null;
@@ -84,7 +83,7 @@ export function SlotsPage() {
 
   return (
     <>
-      <PageHeader title="복용 시기 설정" back={href({ page: 'more' })} />
+      <PageHeader title="복용 시기 설정" back={{ page: 'more' }} />
       <p class="muted page-intro">
         오늘 화면에 시기별 카드로 표시됩니다. 기준 시각이 지나도 체크하지 않은 카드는 강조됩니다.
       </p>

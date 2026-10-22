@@ -4,6 +4,9 @@ import { TodayPage } from './pages/TodayPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { MorePage } from './pages/MorePage';
 import { SlotsPage } from './pages/SlotsPage';
+import { MedicinesPage } from './pages/MedicinesPage';
+import { MedicineEditPage } from './pages/MedicineEditPage';
+import { ScheduleEditPage } from './pages/ScheduleEditPage';
 
 export function App() {
   const route = useRoute();
@@ -11,8 +14,10 @@ export function App() {
     <div class="app">
       <main class="content">
         {route.page === 'today' && <TodayPage />}
-        {route.page === 'medicines' && (
-          <PlaceholderPage title="약" stage={2} description="약 이름, 함량, 재고, 유효기간, 태그와 복용 일정을 등록합니다." />
+        {route.page === 'medicines' && <MedicinesPage />}
+        {route.page === 'medicine' && <MedicineEditPage key={route.id} id={route.id} />}
+        {route.page === 'schedule' && (
+          <ScheduleEditPage key={`${route.medicineId}-${route.id}`} medicineId={route.medicineId} id={route.id} />
         )}
         {route.page === 'prescriptions' && (
           <PlaceholderPage title="조제" stage={4} description="약을 받아 온 날짜, 병원·약국, 처방 일수와 약봉투 수를 기록합니다." />
