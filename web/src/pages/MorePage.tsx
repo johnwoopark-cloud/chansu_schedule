@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'preact/hooks';
 import { PageHeader } from '../components/PageHeader';
-import { Icon } from '../components/Icon';
+import { Icon, type IconName } from '../components/Icon';
 import { formatBytes, getStorageStatus, requestPersistentStorage, type StorageStatus } from '../lib/storage';
 import { canPromptInstall, isStandalone, onInstallStateChange, promptInstall } from '../lib/install';
 import { href } from '../router';
 
+const LINKS: { page: 'slots' | 'symptoms' | 'record-settings'; label: string; icon: IconName }[] = [
+  { page: 'slots', label: '복용 시기 설정', icon: 'clock' },
+  { page: 'symptoms', label: '증상 태그 관리', icon: 'tag' },
+  { page: 'record-settings', label: '자정 넘김 설정', icon: 'today' },
+];
+
 const UPCOMING: { label: string; stage: number }[] = [
-  { label: '증상 태그 관리', stage: 3 },
-  { label: '자정 넘김 설정', stage: 3 },
   { label: '내보내기 (CSV · PDF · 진료용 요약)', stage: 7 },
   { label: '백업 / 복원', stage: 7 },
   { label: 'PIN 잠금', stage: 8 },
@@ -28,13 +32,15 @@ export function MorePage() {
       <PageHeader title="더보기" />
 
       <ul class="menu">
-        <li>
-          <a href={href({ page: 'slots' })}>
-            <Icon name="clock" />
-            <span>복용 시기 설정</span>
-            <Icon name="chevron" size={20} />
-          </a>
-        </li>
+        {LINKS.map((link) => (
+          <li key={link.page}>
+            <a href={href({ page: link.page })}>
+              <Icon name={link.icon} />
+              <span>{link.label}</span>
+              <Icon name="chevron" size={20} />
+            </a>
+          </li>
+        ))}
         {UPCOMING.map((item) => (
           <li key={item.label} class="disabled" aria-disabled="true">
             <span class="menu-label">{item.label}</span>

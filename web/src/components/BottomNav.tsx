@@ -12,6 +12,8 @@ const TABS: { page: Route['page']; label: string; icon: IconName }[] = [
 /** Sub-pages that highlight their parent tab. */
 const PARENT: Partial<Record<Route['page'], Route['page']>> = {
   slots: 'more',
+  symptoms: 'more',
+  'record-settings': 'more',
   medicine: 'medicines',
   schedule: 'medicines',
 };

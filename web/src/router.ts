@@ -8,7 +8,9 @@ export type Route =
   | { page: 'prescriptions' }
   | { page: 'analysis' }
   | { page: 'more' }
-  | { page: 'slots' };
+  | { page: 'slots' }
+  | { page: 'symptoms' }
+  | { page: 'record-settings' };
 
 function parseId(value: string | undefined): number | 'new' | null {
   if (value === 'new') return 'new';
@@ -20,7 +22,7 @@ function parseId(value: string | undefined): number | 'new' | null {
  * Routes:
  *   #/today  #/medicines  #/medicines/new  #/medicines/12
  *   #/medicines/12/schedules/new  #/medicines/12/schedules/5
- *   #/prescriptions  #/analysis  #/more  #/slots
+ *   #/prescriptions  #/analysis  #/more  #/slots  #/symptoms  #/record-settings
  */
 export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -40,6 +42,8 @@ export function parseHash(hash: string): Route {
     case 'analysis':
     case 'more':
     case 'slots':
+    case 'symptoms':
+    case 'record-settings':
     case 'today':
       if (parts.length === 1) return { page: parts[0] };
       break;

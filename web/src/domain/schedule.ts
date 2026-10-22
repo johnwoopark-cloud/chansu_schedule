@@ -1,5 +1,5 @@
 import type { ISODate, Schedule, Slot } from '../db/types';
-import { formatKoreanTime, parseISODate } from './dates';
+import { daysBetween, formatKoreanTime, parseISODate } from './dates';
 import { isValidTime } from './slots';
 
 /** Display order Monday-first; values are Date.getDay() indexes. */
@@ -23,13 +23,6 @@ export function newTimeSchedule(medicineId: number, slotId: number | undefined, 
     weekdays: EVERY_DAY(),
     monthDays: 0,
   };
-}
-
-const MS_PER_DAY = 86_400_000;
-
-function daysBetween(from: ISODate, to: ISODate): number {
-  // Both dates are local midnight; round to absorb DST shifts.
-  return Math.round((parseISODate(to).getTime() - parseISODate(from).getTime()) / MS_PER_DAY);
 }
 
 /**

@@ -7,6 +7,9 @@ import { SlotsPage } from './pages/SlotsPage';
 import { MedicinesPage } from './pages/MedicinesPage';
 import { MedicineEditPage } from './pages/MedicineEditPage';
 import { ScheduleEditPage } from './pages/ScheduleEditPage';
+import { SymptomsPage } from './pages/SymptomsPage';
+import { RecordSettingsPage } from './pages/RecordSettingsPage';
+import { ToastHost } from './components/Toast';
 
 export function App() {
   const route = useRoute();
@@ -27,7 +30,10 @@ export function App() {
         )}
         {route.page === 'more' && <MorePage />}
         {route.page === 'slots' && <SlotsPage />}
+        {route.page === 'symptoms' && <SymptomsPage />}
+        {route.page === 'record-settings' && <RecordSettingsPage />}
       </main>
+      <ToastHost />
       <BottomNav route={route} />
     </div>
   );

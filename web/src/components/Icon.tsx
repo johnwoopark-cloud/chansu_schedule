@@ -19,8 +19,12 @@ const PATHS = {
   pause: 'M9 5v14M15 5v14',
   play: 'M7 4.5v15l12-7.5-12-7.5Z',
   stop: 'M6 6h12v12H6Z',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  skip: 'M6 6l12 12M18 6 6 18',
+  forward: 'M9 6l6 6-6 6',
+  note: 'M5 4h14v12l-4 4H5ZM15 20v-4h4M8 9h8M8 13h5',
   // Medicine icons (MedicineIcon keys prefixed with "med-")
-  'med-tablet': 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM5.6 18.4 18.4 5.6',
+  'med-tablet': 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM3.5 12h17',
   'med-capsule': 'M10.5 20.5 3.5 13.5a4.95 4.95 0 0 1 7-7l7 7a4.95 4.95 0 0 1-7 7ZM7 10l7 7',
   'med-liquid': 'M9 3h6M10 3v3L7 9v10a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9l-3-3V3M7 13h10',
   'med-drop': 'M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z',
