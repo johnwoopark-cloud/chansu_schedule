@@ -35,9 +35,15 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('dialog', (d) => d.accept());
+  let oldServer = false; // 예전 Code.gs가 배포된 상황 흉내
   await page.exposeFunction('__gas', (name, args) => {
     if (!/^api_/.test(name)) return { __err: 'not callable' };
-    try { return JSON.parse(JSON.stringify(env.ctx[name].apply(null, args))); } catch (e) { return { __err: e.message }; }
+    if (oldServer && (name === 'api_updateMed' || name === 'api_stopMed')) return { __err: 'Script function not found: ' + name };
+    try {
+      const r = JSON.parse(JSON.stringify(env.ctx[name].apply(null, args)));
+      if (oldServer && name === 'api_checkKey') delete r.version;
+      return r;
+    } catch (e) { return { __err: e.message }; }
   });
   let shot = 0;
   const snap = async (name) => { if (outDir) await page.screenshot({ path: path.join(outDir, String(++shot).padStart(2, '0') + '-' + name + '.png'), fullPage: true }); };
@@ -217,6 +223,25 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   assert.match(t, /데파킨 시럽 복용 중단됨/);
   assert.doesNotMatch(t.replace(/데파킨 시럽 복용 중단됨/, ''), /데파킨/);
   assert.ok(env.sheets['복약기록'].rows.some((r) => r[5] === '데파킨 시럽'), '지난 기록 유지');
+
+  // 9-2. 예전 Code.gs가 배포돼 있으면: 버전 안내가 뜨고, 저장 실패 메시지가 수정 창 위에 보임
+  assert.doesNotMatch(await text(), /버전이 서로 달라요/);
+  oldServer = true;
+  await page.reload();
+  await settle();
+  assert.match(await text(), /앱 파일 버전이 서로 달라요/);
+  await page.click('[data-act="openEditMed"][aria-label="케프라액 수정"]');
+  await page.click('[data-act="saveMed"]');
+  await settle();
+  const toastBox = await page.locator('.toast').boundingBox();
+  const onTop = await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y).closest('.toast'), [toastBox.x + toastBox.width / 2, toastBox.y + toastBox.height / 2]);
+  assert.ok(onTop, '오류 메시지가 수정 창에 가려지지 않음');
+  assert.match(await page.innerText('.toast'), /저장하지 못했어요: Script function not found: api_updateMed/);
+  await snap('old-server');
+  oldServer = false;
+  await page.click('[data-act="closeSheet"]');
+  await page.reload();
+  await settle();
 
   // 10. 설정 → 로그아웃
   await page.click('[data-act="openSettings"]');

@@ -35,6 +35,9 @@ const SHEETS = {
   },
 };
 
+// index.html의 CLIENT_VERSION과 같아야 한다. 둘이 다르면 화면에 "파일 버전이 달라요" 안내가 뜬다.
+const APP_VERSION = '3';
+
 const KIND_SCHEDULED = '정해진시간';
 const KIND_PRN = '필요시';
 
@@ -63,7 +66,7 @@ function jsonForHtml_(v) {
 // 이름이 api_ 로 시작하는 함수만 화면(google.script.run)에서 부른다. 모두 첫 인자로 키를 받는다.
 
 function api_checkKey(key) {
-  return { ok: isValidKey_(key), people: CONFIG.PEOPLE };
+  return { ok: isValidKey_(key), people: CONFIG.PEOPLE, version: APP_VERSION };
 }
 
 function api_today(key) {

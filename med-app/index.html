@@ -67,7 +67,8 @@ nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:#fff;border
 nav.tabs .in{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
 nav.tabs button{border:none;background:transparent;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;min-height:56px;font-size:12px;color:var(--muted);font-weight:500}
 nav.tabs button.on{color:var(--blue);font-weight:700}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:20;width:calc(100% - 32px);max-width:448px;background:var(--ink);color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:500}
+.toast.err{background:#8A2C00}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:40;width:calc(100% - 32px);max-width:448px;background:var(--ink);color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:500}
 .overlay{position:fixed;inset:0;z-index:30;background:rgba(22,32,42,.45);display:flex;flex-direction:column;justify-content:flex-end}
 .sheet{background:#fff;border-radius:20px 20px 0 0;padding:20px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;max-width:480px;width:100%;margin:0 auto;max-height:92vh;overflow-y:auto}
 .cal-head,.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
@@ -102,6 +103,8 @@ nav.tabs button.on{color:var(--blue);font-weight:700}
 <script>
 var URL_KEY = <?!= jsonForHtml_(urlKey) ?>;
 var APP_URL = <?!= jsonForHtml_(appUrl) ?>;
+// Code.gs의 APP_VERSION과 같아야 한다
+var CLIENT_VERSION = '3';
 
 var DUR = ['30초 미만', '1분', '2분', '5분', '10분 이상'];
 var SZ_TYPES = ['전신 경련', '부분 경련', '결신(멍해짐)', '기타'];
@@ -121,6 +124,7 @@ function store(k, v) { try { if (v == null) localStorage.removeItem('medapp.' + 
 function load(k) { try { return localStorage.getItem('medapp.' + k) || ''; } catch (e) { return ''; } }
 
 // ───── 서버 호출 ─────
+var OUTDATED = '서버 코드(Code.gs)가 예전 버전이에요. Code.gs를 최신으로 붙여넣고 새 버전으로 배포해 주세요.';
 function call(fn) {
   var args = Array.prototype.slice.call(arguments, 1);
   return new Promise(function (resolve, reject) {
@@ -129,6 +133,7 @@ function call(fn) {
       if (msg.indexOf('AUTH') >= 0) { logout(true); return; }
       reject(new Error(msg));
     });
+    if (typeof r[fn] !== 'function') { reject(new Error(OUTDATED)); return; }
     r[fn].apply(r, args);
   });
 }
@@ -142,7 +147,7 @@ function act(fn) {
     render();
     return res;
   }, function (err) {
-    S.busy = false; toast(err.message.replace(/^Error:\s*/, '') || '저장하지 못했어요. 다시 시도해 주세요.');
+    S.busy = false; toast('저장하지 못했어요: ' + (err.message.replace(/^Error:\s*/, '') || '다시 시도해 주세요.'), true);
     render();
     return null;
   });
@@ -155,6 +160,7 @@ function start() {
   if (!candidate) { S.screen = 'needLink'; render(); return; }
   call('api_checkKey', candidate).then(function (res) {
     S.people = res.people || S.people;
+    S.versionMismatch = res.version !== CLIENT_VERSION;
     if (!res.ok) {
       if (URL_KEY) { S.screen = 'badLink'; }
       else { store('key', null); S.screen = 'loggedOut'; }
@@ -172,7 +178,7 @@ function enterMain() {
   refresh();
 }
 function refresh() {
-  return call('api_today', S.key).then(function (d) { S.data = d; render(); }, function (e) { toast('불러오지 못했어요: ' + e.message); });
+  return call('api_today', S.key).then(function (d) { S.data = d; render(); }, function (e) { toast('불러오지 못했어요: ' + e.message, true); });
 }
 function logout(byServer) {
   store('key', null); store('who', null);
@@ -183,10 +189,10 @@ function logout(byServer) {
 
 // ───── 화면 공통 ─────
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-function toast(msg) {
-  S.toast = msg; render();
+function toast(msg, isError) {
+  S.toast = msg; S.toastErr = !!isError; render();
   clearTimeout(toast.t);
-  toast.t = setTimeout(function () { S.toast = ''; render(); }, 2800);
+  toast.t = setTimeout(function () { S.toast = ''; render(); }, isError ? 7000 : 2800);
 }
 function chip(label, on, action, value) {
   return '<button class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" data-act="' + action + '" data-v="' + esc(value == null ? label : value) + '">' + esc(label) + '</button>';
@@ -211,7 +217,7 @@ function render() {
   var h;
   if (S.screen === 'main') h = renderMain();
   else h = renderGate();
-  if (S.toast) h += '<div class="toast" role="status">' + esc(S.toast) + '</div>';
+  if (S.toast) h += '<div class="toast' + (S.toastErr ? ' err' : '') + '" role="status">' + esc(S.toast) + '</div>';
   app.innerHTML = h;
   if (S.screen === 'main') window.scrollTo(0, scrollY);
 }
@@ -241,6 +247,9 @@ function renderMain() {
     '<div class="who" role="group" aria-label="지금 기록하는 사람">' +
     S.people.map(function (p) { return '<button class="' + (S.who === p ? 'on' : '') + '" aria-pressed="' + (S.who === p) + '" data-act="who" data-v="' + esc(p) + '">' + esc(p) + '</button>'; }).join('') +
     '</div><button class="iconbtn" data-act="openSettings" aria-label="설정">' + ICON.gear + '</button></header><main>';
+  if (S.versionMismatch) {
+    h += '<div class="alert" role="alert"><b>앱 파일 버전이 서로 달라요</b><span>Code.gs와 index.html을 둘 다 최신으로 붙여넣은 뒤 <b>배포 관리 → 새 버전</b>으로 배포해 주세요. 그 전에는 일부 기능(약 수정 저장 등)이 안 될 수 있어요.</span></div>';
+  }
   if (S.justRegistered && S.tab === 'today') {
     h += '<div class="card" style="background:var(--blue-soft);border-color:#B9CBF5"><div class="h2">이 폰이 등록됐어요</div>' +
       '<div class="sub" style="color:var(--ink2)">아래 버튼으로 연 화면에서 브라우저 메뉴의 <b>홈 화면에 추가</b>를 누르면 앱처럼 쓸 수 있어요. (비밀 키가 빠진 주소라 더 안전해요)</div>' +
