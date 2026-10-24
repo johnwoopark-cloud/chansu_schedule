@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{
+  --bg:#F4F6F9; --card:#FFFFFF; --line:#E3E7ED; --line2:#E8ECF1; --ink:#16202A; --ink2:#3A4652; --muted:#5B6673;
+  --blue:#1F4FC4; --blue-soft:#EAF0FD; --green:#1F8A5B; --green-ink:#146B45; --green-soft:#EAF6EF; --green-line:#A9D8BF;
+  --orange:#B85A00; --orange-soft:#FFF1E3; --orange-line:#F0B37A; --chip:#F7F9FB; --chip-line:#D5DBE3;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;-webkit-text-size-adjust:100%}
+button{font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+button:disabled{opacity:.55;cursor:default}
+input,textarea{font-family:inherit;font-size:16px;color:var(--ink)}
+a{color:var(--blue)}
+.app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+.top{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:14px 12px 10px 16px;display:flex;align-items:center;gap:8px}
+.top .ttl{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.top .date{font-size:13px;color:var(--muted)}
+.top h1{margin:0;font-size:20px;font-weight:800}
+.who{display:flex;gap:2px;background:#EEF1F5;border-radius:999px;padding:4px;flex-shrink:0}
+.who button{border:none;border-radius:999px;padding:8px 11px;min-height:36px;font-size:14px;font-weight:500;background:transparent;color:var(--muted)}
+.who button.on{background:#fff;color:var(--ink);font-weight:700;box-shadow:0 1px 3px rgba(22,32,42,.15)}
+.iconbtn{border:none;background:transparent;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--ink2);flex-shrink:0}
+main{flex:1;padding:16px 16px 110px;display:flex;flex-direction:column;gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.card.done{background:var(--green-soft);border-color:var(--green-line)}
+.row{display:flex;align-items:center;gap:12px;padding-top:10px;border-top:1px solid var(--line2)}
+.row .info{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.name{font-size:15px;font-weight:700}
+.name small{font-size:15px;font-weight:500;color:var(--ink2)}
+.sub{font-size:13px;color:var(--muted)}
+.sub.ok{color:var(--green-ink);font-weight:600}
+.sub.warn{color:var(--orange);font-weight:600}
+.between{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.h2{font-size:15px;font-weight:700}
+.slot-time{font-size:18px;font-weight:800}
+.btn{min-width:88px;min-height:44px;border-radius:12px;border:none;background:var(--blue);color:#fff;font-size:15px;font-weight:700;flex-shrink:0;padding:0 12px}
+.btn.done{background:#fff;border:1.5px solid var(--green);color:var(--green-ink)}
+.btn.outline{background:#fff;border:1.5px solid var(--blue);color:var(--blue)}
+.btn.orange{background:var(--orange);color:#fff}
+.btn.ghost{background:var(--blue-soft);color:var(--blue);min-width:0;min-height:40px;font-size:14px}
+.btn.wide{width:100%;min-height:52px;font-size:16px;border-radius:14px}
+.btn.gray{background:#D5DBE3;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
+.chips.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.chip{min-height:40px;padding:8px 14px;border-radius:10px;border:1.5px solid var(--chip-line);background:var(--chip);color:#2A3540;font-size:14px;font-weight:500}
+.chip.on{border-color:var(--blue);background:var(--blue);color:#fff;font-weight:600}
+.alert{background:var(--orange-soft);border:1px solid var(--orange-line);color:#7A3A00;border-radius:14px;padding:12px 14px;font-size:14px;font-weight:500;display:flex;flex-direction:column;gap:10px}
+.alert .acts{display:flex;gap:8px;flex-wrap:wrap}
+.alert .acts button{min-height:40px;border-radius:10px;padding:0 14px;font-size:14px;font-weight:700;border:1.5px solid #D98C45;background:#fff;color:#7A3A00}
+.alert .acts button.primary{background:var(--orange);border-color:var(--orange);color:#fff}
+.bar{flex:1;height:8px;background:#E8ECF1;border-radius:999px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:999px;background:var(--green)}
+.bar i.low{background:#D9822B}
+label.lbl,.lbl{font-size:14px;font-weight:700}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field input,.field textarea{border:1px solid #CDD4DD;border-radius:10px;padding:11px 12px;width:100%;background:#fff}
+.field textarea{min-height:72px;resize:vertical}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.empty{text-align:center;color:var(--muted);font-size:14px;padding:12px 0}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:#fff;border-top:1px solid var(--line);padding:6px 8px calc(10px + env(safe-area-inset-bottom))}
+nav.tabs .in{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+nav.tabs button{border:none;background:transparent;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;min-height:56px;font-size:12px;color:var(--muted);font-weight:500}
+nav.tabs button.on{color:var(--blue);font-weight:700}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:96px;z-index:20;width:calc(100% - 32px);max-width:448px;background:var(--ink);color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;font-weight:500}
+.overlay{position:fixed;inset:0;z-index:30;background:rgba(22,32,42,.45);display:flex;flex-direction:column;justify-content:flex-end}
+.sheet{background:#fff;border-radius:20px 20px 0 0;padding:20px 16px calc(24px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;max-width:480px;width:100%;margin:0 auto;max-height:92vh;overflow-y:auto}
+.cal-head,.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal-head span{text-align:center;font-size:12px;color:var(--muted)}
+.cal button{min-height:52px;border-radius:10px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 4px;background:var(--chip);border:1.5px solid transparent;color:var(--ink);font-size:13px;font-weight:600}
+.cal button.today{background:var(--blue-soft);border-color:var(--blue)}
+.cal button.sel{border-color:var(--ink)}
+.cal button.future{color:#9AA4B0}
+.cal .blank{min-height:52px}
+.dots{display:flex;gap:3px;height:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.dot.miss{background:transparent;border:1.5px solid #8A95A3}
+.szmark{font-size:10px;font-weight:700;color:var(--orange)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink2);padding-top:6px;border-top:1px solid #EEF1F5}
+.legend span{display:flex;align-items:center;gap:5px}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:2px}
+.stat span{font-size:12px;color:var(--muted)}
+.stat b{font-size:20px;font-weight:800}
+.navbtn{border:1px solid var(--line);background:#fff;border-radius:10px;width:40px;height:40px;font-size:18px;color:var(--ink2)}
+.center{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px 20px;gap:16px;max-width:480px;margin:0 auto}
+.center h1{margin:0;font-size:24px;font-weight:800}
+.center p{margin:0;font-size:15px;line-height:1.6;color:var(--ink2)}
+.list{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--ink2)}
+.list div{display:flex;gap:8px}
+.spinner{width:28px;height:28px;border:3px solid #D5DBE3;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app"><div class="center"><div class="spinner" aria-label="불러오는 중"></div></div></div>
+<script>
+var URL_KEY = <?!= jsonForHtml_(urlKey) ?>;
+var APP_URL = <?!= jsonForHtml_(appUrl) ?>;
+
+var DUR = ['30초 미만', '1분', '2분', '5분', '10분 이상'];
+var SZ_TYPES = ['전신 경련', '부분 경련', '결신(멍해짐)', '기타'];
+var SZ_SITS = ['수면 중', '기상 직후', '일상생활 중', '기타'];
+var SZ_AURA = ['이상한 냄새', '이상한 소리', '쓴맛', '기시감', '공포감', '복부 압박감', '없음/모름'];
+var SZ_MED = ['제때 복용', '미복용', '늦게 복용'];
+var TIME_CHOICES = ['07:00', '08:00', '09:00', '12:00', '13:00', '18:00', '19:00', '20:00', '21:00', '22:00'];
+
+var S = {
+  screen: 'loading', key: '', who: '', people: ['엄마', '아빠', '아이'], tab: 'today',
+  data: null, warn: null, pendingPrn: null, reason: '두통', busy: false, toast: '',
+  sheet: null, form: null, sz: null, month: null, monthData: null, selDay: null, justRegistered: false
+};
+
+// ───── 저장소 (이 폰에만 저장) ─────
+function store(k, v) { try { if (v == null) localStorage.removeItem('medapp.' + k); else localStorage.setItem('medapp.' + k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem('medapp.' + k) || ''; } catch (e) { return ''; } }
+
+// ───── 서버 호출 ─────
+function call(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function (resolve, reject) {
+    var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function (err) {
+      var msg = (err && err.message) || String(err);
+      if (msg.indexOf('AUTH') >= 0) { logout(true); return; }
+      reject(new Error(msg));
+    });
+    r[fn].apply(r, args);
+  });
+}
+function act(fn) {
+  if (S.busy) return Promise.resolve(null);
+  S.busy = true; render();
+  var args = Array.prototype.slice.call(arguments, 1);
+  return call.apply(null, [fn, S.key].concat(args)).then(function (res) {
+    S.busy = false;
+    if (res && res.state) S.data = res.state;
+    render();
+    return res;
+  }, function (err) {
+    S.busy = false; toast(err.message.replace(/^Error:\s*/, '') || '저장하지 못했어요. 다시 시도해 주세요.');
+    render();
+    return null;
+  });
+}
+
+// ───── 시작 / 등록 / 로그아웃 ─────
+function start() {
+  var saved = load('key');
+  var candidate = URL_KEY || saved;
+  if (!candidate) { S.screen = 'needLink'; render(); return; }
+  call('api_checkKey', candidate).then(function (res) {
+    S.people = res.people || S.people;
+    if (!res.ok) {
+      if (URL_KEY) { S.screen = 'badLink'; }
+      else { store('key', null); S.screen = 'loggedOut'; }
+      render(); return;
+    }
+    S.key = candidate;
+    if (URL_KEY && URL_KEY !== saved) { store('key', URL_KEY); S.justRegistered = true; }
+    S.who = S.people.indexOf(load('who')) >= 0 ? load('who') : '';
+    if (!S.who) { S.screen = 'chooseWho'; render(); return; }
+    enterMain();
+  }, function (err) { S.screen = 'error'; S.error = err.message; render(); });
+}
+function enterMain() {
+  S.screen = 'main';
+  refresh();
+}
+function refresh() {
+  return call('api_today', S.key).then(function (d) { S.data = d; render(); }, function (e) { toast('불러오지 못했어요: ' + e.message); });
+}
+function logout(byServer) {
+  store('key', null); store('who', null);
+  S.key = ''; S.who = ''; S.data = null; S.sheet = null;
+  S.screen = byServer ? 'loggedOut' : 'loggedOutSelf';
+  render();
+}
+
+// ───── 화면 공통 ─────
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function toast(msg) {
+  S.toast = msg; render();
+  clearTimeout(toast.t);
+  toast.t = setTimeout(function () { S.toast = ''; render(); }, 2800);
+}
+function chip(label, on, action, value) {
+  return '<button class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" data-act="' + action + '" data-v="' + esc(value == null ? label : value) + '">' + esc(label) + '</button>';
+}
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+function nowHM() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+function todayYMD() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function iGa(word) { var c = word.charCodeAt(word.length - 1); return (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28) ? '이' : '가'; }
+
+var ICON = {
+  pill: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7z"/><path d="m8.5 8.5 7 7"/></svg>',
+  pen: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  cal: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  gear: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  warn: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#B85A00" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>'
+};
+
+// ───── 화면 그리기 ─────
+function render() {
+  var app = document.getElementById('app');
+  var scrollY = window.scrollY;
+  var h;
+  if (S.screen === 'main') h = renderMain();
+  else h = renderGate();
+  if (S.toast) h += '<div class="toast" role="status">' + esc(S.toast) + '</div>';
+  app.innerHTML = h;
+  if (S.screen === 'main') window.scrollTo(0, scrollY);
+}
+
+function renderGate() {
+  var s = S.screen;
+  if (s === 'loading') return '<div class="center"><div class="spinner" aria-label="불러오는 중"></div></div>';
+  if (s === 'chooseWho') {
+    return '<div class="center"><h1>이 폰은 누가 쓰나요?</h1><p>기록할 때 이름이 함께 남아요. 나중에 위쪽 버튼으로 언제든 바꿀 수 있어요.</p>' +
+      '<div class="chips grid2" style="grid-template-columns:repeat(3,minmax(0,1fr))">' +
+      S.people.map(function (p) { return '<button class="btn" style="min-height:56px" data-act="pickFirstWho" data-v="' + esc(p) + '">' + esc(p) + '</button>'; }).join('') +
+      '</div></div>';
+  }
+  var title, body;
+  if (s === 'needLink') { title = '등록이 필요해요'; body = '가족에게 받은 <b>가족 주소</b>(비밀 키가 붙은 주소)를 이 폰에서 한 번 열어 주세요.'; }
+  else if (s === 'badLink') { title = '주소가 맞지 않아요'; body = '비밀 키가 바뀌었거나 주소가 잘못 복사됐어요. 관리자에게 새 가족 주소를 받아 주세요.'; }
+  else if (s === 'loggedOut') { title = '다시 등록해 주세요'; body = '비밀 키가 바뀌어서 이 폰이 로그아웃됐어요. 관리자에게 새 가족 주소를 받아 열어 주세요.'; }
+  else if (s === 'loggedOutSelf') { title = '로그아웃했어요'; body = '이 폰에 저장된 키와 사용자 정보를 지웠어요. 다시 쓰려면 가족 주소를 열어 주세요. 홈 화면 아이콘도 지워 주세요.'; }
+  else { title = '문제가 생겼어요'; body = esc(S.error || '잠시 뒤 다시 열어 주세요.'); }
+  return '<div class="center"><h1>' + title + '</h1><p>' + body + '</p></div>';
+}
+
+function renderMain() {
+  var titles = { today: '오늘의 약', seizure: '경련 기록', cal: '기록 달력' };
+  var d = S.data;
+  var h = '<div class="app"><header class="top"><div class="ttl"><span class="date">' + esc(d ? d.dateLabel : '') + '</span><h1>' + titles[S.tab] + '</h1></div>' +
+    '<div class="who" role="group" aria-label="지금 기록하는 사람">' +
+    S.people.map(function (p) { return '<button class="' + (S.who === p ? 'on' : '') + '" aria-pressed="' + (S.who === p) + '" data-act="who" data-v="' + esc(p) + '">' + esc(p) + '</button>'; }).join('') +
+    '</div><button class="iconbtn" data-act="openSettings" aria-label="설정">' + ICON.gear + '</button></header><main>';
+  if (S.justRegistered && S.tab === 'today') {
+    h += '<div class="card" style="background:var(--blue-soft);border-color:#B9CBF5"><div class="h2">이 폰이 등록됐어요</div>' +
+      '<div class="sub" style="color:var(--ink2)">아래 버튼으로 연 화면에서 브라우저 메뉴의 <b>홈 화면에 추가</b>를 누르면 앱처럼 쓸 수 있어요. (비밀 키가 빠진 주소라 더 안전해요)</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' + (APP_URL ? '<a class="btn" style="display:inline-flex;align-items:center;text-decoration:none" href="' + esc(APP_URL) + '">홈 화면용 주소 열기</a>' : '') +
+      '<button class="btn ghost" data-act="dismissReg">닫기</button></div></div>';
+  }
+  if (!d) h += '<div class="card"><div class="spinner" aria-label="불러오는 중"></div></div>';
+  else if (S.tab === 'today') h += renderToday(d);
+  else if (S.tab === 'seizure') h += renderSeizure();
+  else h += renderCalendar();
+  h += '</main><nav class="tabs" aria-label="화면 이동"><div class="in">' +
+    tabBtn('today', ICON.pill, '오늘') + tabBtn('seizure', ICON.pen, '경련 기록') + tabBtn('cal', ICON.cal, '달력') + '</div></nav></div>';
+  if (S.sheet === 'addMed') h += renderAddMed();
+  if (S.sheet === 'settings') h += renderSettings();
+  return h;
+}
+function tabBtn(id, icon, label) {
+  return '<button class="' + (S.tab === id ? 'on' : '') + '" data-act="tab" data-v="' + id + '"' + (S.tab === id ? ' aria-current="page"' : '') + '>' + icon + '<span>' + label + '</span></button>';
+}
+
+function renderToday(d) {
+  var h = '';
+  if (S.warn) {
+    h += '<div class="alert" role="alert"><div style="display:flex;gap:10px">' + ICON.warn + '<span>' + esc(S.warn.text) + '</span></div>';
+    if (S.warn.actions && S.warn.actions.length) {
+      h += '<div class="acts">' + S.warn.actions.map(function (a) {
+        return '<button class="' + (a.primary ? 'primary' : '') + '" data-act="' + a.act + '" data-v="' + esc(a.v || '') + '"' + (S.busy ? ' disabled' : '') + '>' + esc(a.label) + '</button>';
+      }).join('') + '</div>';
+    }
+    h += '</div>';
+  }
+  var sched = d.meds.filter(function (m) { return !m.prn; });
+  var prn = d.meds.filter(function (m) { return m.prn; });
+  var times = [];
+  sched.forEach(function (m) { m.times.forEach(function (t) { if (times.indexOf(t) < 0) times.push(t); }); });
+  times.sort();
+
+  if (!d.meds.length) {
+    h += '<div class="card"><div class="h2">아직 등록된 약이 없어요</div><div class="sub">먼저 먹는 약을 추가해 주세요.</div><button class="btn wide" data-act="openAddMed">+ 약 추가</button></div>';
+    return h;
+  }
+
+  times.forEach(function (t) {
+    var due = sched.filter(function (m) { return m.times.indexOf(t) >= 0; });
+    var done = due.filter(function (m) { return d.taken[m.id + '|' + t]; }).length;
+    var all = done === due.length;
+    h += '<div class="card' + (all ? ' done' : '') + '"><div class="between"><span class="slot-time">' + t + '</span><span class="sub' + (all ? ' ok' : '') + '">' + (all ? '모두 완료' : done + ' / ' + due.length + ' 완료') + '</span></div>';
+    due.forEach(function (m) {
+      var tk = d.taken[m.id + '|' + t];
+      h += '<div class="row"><div class="info"><span class="name">' + esc(m.name) + ' <small>' + esc(m.dose) + '</small></span>' +
+        '<span class="sub' + (tk ? ' ok' : '') + '">' + (tk ? esc(tk.by) + ' · ' + esc(tk.at) + ' 기록' : '아직 기록 없음') + '</span></div>' +
+        '<button class="btn' + (tk ? ' done' : '') + '" data-act="dose" data-v="' + esc(m.id + '|' + t) + '"' + (S.busy ? ' disabled' : '') + '>' + (tk ? '완료' : '먹었어요') + '</button></div>';
+    });
+    h += '</div>';
+  });
+
+  if (prn.length) {
+    h += '<div class="card"><div style="display:flex;flex-direction:column;gap:2px"><span class="h2">필요할 때 먹는 약</span><span class="sub">머리가 아플 때 등 정해진 시간 외에 먹은 약</span></div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px"><span class="sub" style="font-weight:600;color:var(--ink2)">먹은 이유</span><div class="chips">' +
+      d.reasons.map(function (r) { return chip(r, S.reason === r, 'reason'); }).join('') + '</div></div>';
+    prn.forEach(function (m) {
+      var mine = d.prnToday.filter(function (x) { return x.medId === m.id; });
+      var last = mine[mine.length - 1];
+      var pending = S.pendingPrn === m.id;
+      h += '<div class="row"><div class="info"><span class="name">' + esc(m.name) + ' <small>' + esc(m.dose) + '</small></span>' +
+        '<span class="sub' + (last ? ' ok' : '') + '">' + (last ? '오늘 ' + mine.length + '회 · 마지막 ' + esc(last.by) + ' ' + esc(last.at) + ' (' + esc(last.reason) + ')' : '오늘 0회 · 최소 ' + esc(m.gapH) + '시간 간격') + '</span></div>' +
+        '<button class="btn ' + (pending ? 'orange' : 'outline') + '" data-act="prn" data-v="' + esc(m.id) + '"' + (S.busy ? ' disabled' : '') + '>' + (pending ? '그래도 기록' : '먹었어요') + '</button></div>';
+    });
+    h += '</div>';
+  }
+
+  h += '<div class="card"><div class="between" style="align-items:center"><span class="h2">복용 중인 약 · ' + d.meds.length + '개</span><button class="btn ghost" data-act="openAddMed">+ 약 추가</button></div>';
+  d.meds.forEach(function (m) {
+    var pct = 0, txt = '남은 양 미입력';
+    if (m.stock != null) {
+      txt = m.stock + esc(m.unit) + (m.daysLeft != null ? ' · ' + m.daysLeft + '일분' : '');
+      pct = m.daysLeft != null ? Math.min(100, Math.round(m.daysLeft / 60 * 100)) : Math.min(100, m.stock);
+    }
+    h += '<div style="display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line2)">' +
+      '<div class="between"><span class="name">' + esc(m.name) + '</span><span class="sub" style="color:var(--ink2)">' + esc(m.dose) + ' · ' + (m.prn ? '필요할 때' : esc(m.times.join(' · '))) + '</span></div>' +
+      '<div style="display:flex;align-items:center;gap:10px"><div class="bar"><i class="' + (m.low ? 'low' : '') + '" style="width:' + pct + '%"></i></div>' +
+      '<span class="sub' + (m.low ? ' warn' : '') + '" style="white-space:nowrap">' + txt + '</span></div></div>';
+  });
+  h += '<div class="sub">약 이름·용량 수정이나 복용 중단은 스프레드시트의 "약목록"에서 해 주세요.</div></div>';
+  return h;
+}
+
+function newSz() {
+  return { date: todayYMD(), time: nowHM(), duration: '1분', type: '', situation: '', aura: [], medState: '', memo: '' };
+}
+function renderSeizure() {
+  var z = S.sz || (S.sz = newSz());
+  var h = '<div class="card"><div class="grid2"><div class="field"><label class="lbl" for="szDate">날짜</label><input id="szDate" type="date" value="' + esc(z.date) + '" data-in="sz.date"></div>' +
+    '<div class="field"><label class="lbl" for="szTime">시작 시각</label><input id="szTime" type="time" value="' + esc(z.time) + '" data-in="sz.time"></div></div></div>';
+  h += '<div class="card"><span class="h2">지속 시간</span><div class="chips">' + DUR.map(function (x) { return chip(x, z.duration === x, 'szOne', 'duration|' + x); }).join('') + '</div></div>';
+  h += group('경련 종류', '하나 선택', SZ_TYPES, function (x) { return z.type === x; }, 'type');
+  h += group('발생 상황', '하나 선택', SZ_SITS, function (x) { return z.situation === x; }, 'situation');
+  h += '<div class="card"><div class="between"><span class="h2">전조 증상</span><span class="sub">여러 개 선택</span></div><div class="chips">' +
+    SZ_AURA.map(function (x) { return chip(x, z.aura.indexOf(x) >= 0, 'szAura'); }).join('') + '</div></div>';
+  h += group('경련 당시 복약', '하나 선택', SZ_MED, function (x) { return z.medState === x; }, 'medState');
+  h += '<div class="card"><div class="field"><label class="lbl" for="szMemo">메모</label><textarea id="szMemo" placeholder="예: 경련 후 잘 먹고 기운 있음" data-in="sz.memo">' + esc(z.memo) + '</textarea></div></div>';
+  h += '<button class="btn wide" data-act="saveSz"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '저장하고 가족에게 알리기') + '</button>';
+  return h;
+}
+function group(title, hint, items, isOn, field) {
+  return '<div class="card"><div class="between"><span class="h2">' + title + '</span><span class="sub">' + hint + '</span></div><div class="chips">' +
+    items.map(function (x) { return chip(x, isOn(x), 'szOne', field + '|' + x); }).join('') + '</div></div>';
+}
+
+function renderCalendar() {
+  var md = S.monthData;
+  var m = S.month;
+  var h = '<div class="card"><div class="between" style="align-items:center"><button class="navbtn" data-act="month" data-v="-1" aria-label="이전 달">‹</button>' +
+    '<span style="font-size:17px;font-weight:800">' + m.y + '년 ' + m.m + '월</span><button class="navbtn" data-act="month" data-v="1" aria-label="다음 달">›</button></div>';
+  if (!md || md.year !== m.y || md.month !== m.m) return h + '<div class="spinner" aria-label="불러오는 중"></div></div>';
+  h += '<div class="cal-head"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div class="cal">';
+  for (var i = 0; i < md.firstWeekday; i++) h += '<div class="blank"></div>';
+  md.days.forEach(function (day) {
+    var cls = (day.date === md.today ? ' today' : '') + (day.date === S.selDay ? ' sel' : '') + (day.future ? ' future' : '');
+    h += '<button class="' + cls + '" data-act="day" data-v="' + day.date + '" aria-label="' + m.m + '월 ' + day.day + '일"><span>' + day.day + '</span><span class="dots">' +
+      day.slots.map(function (s) { return '<span class="dot' + (s.done ? '' : ' miss') + '"></span>'; }).join('') + '</span>' +
+      (day.seizures.length ? '<span class="szmark">경련' + (day.seizures.length > 1 ? ' ' + day.seizures.length : '') + '</span>' : '') + '</button>';
+  });
+  h += '</div><div class="legend"><span><span class="dot"></span>그 시간 약 모두 복용</span><span><span class="dot miss"></span>미기록</span><span><span class="szmark">경련</span>경련 기록</span></div></div>';
+  h += '<div class="stats"><div class="stat"><span>이번 달 복약률</span><b>' + (md.rate == null ? '-' : md.rate + '%') + '</b></div>' +
+    '<div class="stat"><span>이번 달 경련</span><b>' + md.seizureCount + '회</b></div>' +
+    '<div class="stat"><span>무경련</span><b>' + (md.seizureFreeDays == null ? '-' : md.seizureFreeDays + '일째') + '</b></div></div>';
+  var sel = S.selDay && md.days.filter(function (x) { return x.date === S.selDay; })[0];
+  if (sel) {
+    h += '<div class="card"><span class="h2">' + m.m + '월 ' + sel.day + '일 기록</span>';
+    if (!sel.doses.length && !sel.seizures.length) h += '<div class="empty">기록이 없어요</div>';
+    sel.seizures.forEach(function (z) {
+      h += '<div class="row" style="align-items:flex-start"><div class="info"><span class="name" style="color:var(--orange)">경련 ' + esc(z.time) + ' · ' + esc(z.duration) + '</span>' +
+        '<span class="sub">' + esc([z.type, z.situation, z.aura && ('전조: ' + z.aura), z.medState && ('복약: ' + z.medState)].filter(Boolean).join(' · ')) + '</span>' +
+        (z.memo ? '<span class="sub" style="color:var(--ink2)">' + esc(z.memo) + '</span>' : '') + '<span class="sub">기록: ' + esc(z.by) + '</span></div></div>';
+    });
+    sel.doses.forEach(function (x) {
+      h += '<div class="row"><div class="info"><span class="name">' + esc(x.name) + ' <small>' + (x.prn ? '필요 시 · ' + esc(x.reason) : esc(x.slot) + ' 회차') + '</small></span>' +
+        '<span class="sub">' + esc(x.by) + ' · ' + esc(x.at) + '</span></div></div>';
+    });
+    h += '</div>';
+  }
+  h += '<div class="sub" style="text-align:center">진료 때는 스프레드시트의 "복약기록", "경련기록" 탭을 보여 주거나 인쇄하세요.</div>';
+  return h;
+}
+
+function renderAddMed() {
+  var f = S.form;
+  var canSave = f.name.trim() && (f.prn || f.times.length);
+  var h = '<div class="overlay" data-act="closeSheet" data-self="1"><div class="sheet" role="dialog" aria-label="약 추가">' +
+    '<div class="between" style="align-items:center"><span style="font-size:18px;font-weight:800">약 추가</span><button class="btn ghost" data-act="closeSheet">닫기</button></div>' +
+    '<div class="field"><label class="lbl" for="mName">약 이름</label><input id="mName" value="' + esc(f.name) + '" placeholder="예: 데파킨 시럽" maxlength="40" data-in="form.name"></div>' +
+    '<div class="grid2"><div class="field"><label class="lbl" for="mDose">1회 용량</label><input id="mDose" value="' + esc(f.dose) + '" placeholder="예: 2ml" maxlength="20" data-in="form.dose"></div>' +
+    '<div class="field"><label class="lbl" for="mStock">현재 남은 양</label><input id="mStock" value="' + esc(f.stock) + '" placeholder="예: 60ml" maxlength="20" data-in="form.stock"></div></div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">먹는 방식</span><div class="chips grid2">' +
+    chip('정해진 시간', !f.prn, 'formKind', '0') + chip('필요할 때 (두통 등)', f.prn, 'formKind', '1') + '</div></div>';
+  if (!f.prn) {
+    h += '<div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">복용 시간 <span class="sub" style="font-weight:500">(여러 개 선택)</span></span><div class="chips">' +
+      TIME_CHOICES.map(function (t) { return chip(t, f.times.indexOf(t) >= 0, 'formTime'); }).join('') + '</div></div>';
+  } else {
+    h += '<div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">최소 복용 간격 <span class="sub" style="font-weight:500">(의사·약사 안내대로)</span></span><div class="chips">' +
+      [4, 6, 8, 12].map(function (g) { return chip(g + '시간', f.gapH === g, 'formGap', String(g)); }).join('') + '</div></div>';
+  }
+  h += '<button class="btn wide' + (canSave ? '' : ' gray') + '" data-act="saveMed"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '추가하기') + '</button></div></div>';
+  return h;
+}
+
+function renderSettings() {
+  return '<div class="overlay" data-act="closeSheet" data-self="1"><div class="sheet" role="dialog" aria-label="설정">' +
+    '<div class="between" style="align-items:center"><span style="font-size:18px;font-weight:800">설정</span><button class="btn ghost" data-act="closeSheet">닫기</button></div>' +
+    '<div class="list"><div>이 폰 기본 사용자: <b>' + esc(S.who) + '</b></div><div>위쪽 이름 버튼을 누르면 바뀌고, 이 폰에 기억돼요.</div></div>' +
+    (APP_URL ? '<a class="btn wide outline" style="display:flex;align-items:center;justify-content:center;text-decoration:none" href="' + esc(APP_URL) + '">홈 화면용 주소 열기</a>' : '') +
+    '<button class="btn wide orange" data-act="logout">이 폰에서 로그아웃</button>' +
+    '<div class="sub">로그아웃하면 이 폰에 저장된 비밀 키가 지워져요. 다른 가족 폰과 기록에는 영향이 없어요. 폰을 잃어버렸다면 관리자가 비밀 키를 바꿔야 해요.</div>' +
+    '</div></div>';
+}
+
+// ───── 동작 ─────
+var ACTIONS = {
+  pickFirstWho: function (v) { S.who = v; store('who', v); enterMain(); },
+  who: function (v) { S.who = v; store('who', v); S.warn = null; S.pendingPrn = null; render(); },
+  tab: function (v) {
+    S.tab = v; S.warn = null; S.pendingPrn = null;
+    if (v === 'cal') loadMonth();
+    if (v === 'today') refresh();
+    render(); window.scrollTo(0, 0);
+  },
+  dismissReg: function () { S.justRegistered = false; render(); },
+  openSettings: function () { S.sheet = 'settings'; render(); },
+  openAddMed: function () { S.form = { name: '', dose: '', stock: '', prn: false, times: [], gapH: 4 }; S.sheet = 'addMed'; render(); },
+  closeSheet: function () { S.sheet = null; render(); },
+  logout: function () { if (confirm('이 폰에서 로그아웃할까요?')) logout(false); },
+  reason: function (v) { S.reason = v; render(); },
+  dose: function (v) {
+    var p = v.split('|'), id = p[0], slot = p[1];
+    var med = S.data.meds.filter(function (m) { return m.id === id; })[0];
+    var tk = S.data.taken[v];
+    S.pendingPrn = null;
+    if (tk) {
+      S.warn = { text: '이미 ' + tk.by + iGa(tk.by) + ' ' + tk.at + '에 ' + slot + ' ' + med.name + '을(를) 기록했어요. 두 번 먹지 않도록 확인하세요.',
+        actions: [{ label: '기록 취소', act: 'undo', v: v }, { label: '확인', act: 'clearWarn', primary: true }] };
+      render(); return;
+    }
+    S.warn = null;
+    act('api_takeDose', S.who, id, slot).then(function (res) {
+      if (!res) return;
+      if (res.status === 'dup') {
+        S.warn = { text: '방금 ' + res.by + iGa(res.by) + ' ' + res.at + '에 먼저 기록했어요. 두 번 먹지 않도록 확인하세요.', actions: [{ label: '확인', act: 'clearWarn', primary: true }] };
+        render();
+      } else toast(slot + ' ' + med.name + ' 기록됨 · 가족 화면에도 보여요');
+    });
+  },
+  undo: function (v) {
+    var p = v.split('|');
+    if (!confirm('이 기록을 취소할까요?')) return;
+    S.warn = null;
+    act('api_undoDose', p[0], p[1]).then(function (res) { if (res) toast('기록을 취소했어요'); });
+  },
+  clearWarn: function () { S.warn = null; S.pendingPrn = null; render(); },
+  prn: function (id) {
+    var med = S.data.meds.filter(function (m) { return m.id === id; })[0];
+    var force = S.pendingPrn === id;
+    act('api_takePrn', S.who, id, S.reason, force).then(function (res) {
+      if (!res) return;
+      if (res.status === 'tooSoon') {
+        S.pendingPrn = id;
+        S.warn = { text: '마지막 복용(' + (res.sameDay ? '' : '어제 ') + res.by + ' · ' + res.at + ') 후 ' + res.hoursAgo + '시간밖에 안 지났어요. 최소 간격은 ' + res.gapH + '시간이에요.',
+          actions: [{ label: '그래도 기록', act: 'prn', v: id }, { label: '취소', act: 'clearWarn', primary: true }] };
+        render();
+      } else {
+        S.pendingPrn = null; S.warn = null;
+        toast(med.name + ' 기록됨 · 이유: ' + S.reason);
+      }
+    });
+  },
+  formKind: function (v) { S.form.prn = v === '1'; render(); },
+  formTime: function (v) { var t = S.form.times, i = t.indexOf(v); if (i >= 0) t.splice(i, 1); else t.push(v); render(); },
+  formGap: function (v) { S.form.gapH = Number(v); render(); },
+  saveMed: function () {
+    var f = S.form;
+    if (!f.name.trim()) { toast('약 이름을 적어 주세요'); return; }
+    if (!f.prn && !f.times.length) { toast('복용 시간을 하나 이상 골라 주세요'); return; }
+    act('api_addMed', f).then(function (res) { if (res) { S.sheet = null; toast(f.name + ' 추가됨'); } });
+  },
+  szOne: function (v) { var i = v.indexOf('|'); var k = v.slice(0, i), x = v.slice(i + 1); S.sz[k] = S.sz[k] === x && k !== 'duration' ? '' : x; render(); },
+  szAura: function (v) { var a = S.sz.aura, i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); render(); },
+  saveSz: function () {
+    var z = S.sz;
+    if (!z.type) { toast('경련 종류를 골라 주세요'); return; }
+    act('api_saveSeizure', S.who, z).then(function (res) {
+      if (!res) return;
+      S.sz = null; S.tab = 'today'; S.monthData = null; refresh();
+      toast('경련 기록 저장 · 가족에게 알림을 보냈어요');
+      window.scrollTo(0, 0);
+    });
+  },
+  month: function (v) {
+    var m = S.month.m + Number(v), y = S.month.y;
+    if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+    S.month = { y: y, m: m }; S.selDay = null; loadMonth(); render();
+  },
+  day: function (v) { S.selDay = S.selDay === v ? null : v; render(); }
+};
+
+function loadMonth() {
+  if (!S.month) { var n = new Date(); S.month = { y: n.getFullYear(), m: n.getMonth() + 1 }; }
+  var want = S.month;
+  call('api_month', S.key, want.y, want.m).then(function (md) {
+    if (S.month.y === want.y && S.month.m === want.m) { S.monthData = md; render(); }
+  }, function (e) { toast('달력을 불러오지 못했어요: ' + e.message); });
+}
+
+document.addEventListener('click', function (e) {
+  var el = e.target.closest('[data-act]');
+  if (!el) return;
+  if (el.getAttribute('data-self') && e.target !== el) return;
+  var fn = ACTIONS[el.getAttribute('data-act')];
+  if (fn && !el.disabled) { e.preventDefault(); fn(el.getAttribute('data-v') || ''); }
+});
+document.addEventListener('input', function (e) {
+  var path = e.target.getAttribute && e.target.getAttribute('data-in');
+  if (!path) return;
+  var p = path.split('.');
+  if (S[p[0]]) S[p[0]][p[1]] = e.target.value;
+  if (p[0] === 'form') {
+    var f = S.form, btn = document.querySelector('[data-act="saveMed"]');
+    if (btn) btn.className = 'btn wide' + (f.name.trim() && (f.prn || f.times.length) ? '' : ' gray');
+  }
+});
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible' && S.screen === 'main' && S.tab === 'today') refresh();
+});
+setInterval(function () {
+  if (document.visibilityState === 'visible' && S.screen === 'main' && S.tab === 'today' && !S.busy && !S.sheet) refresh();
+}, 60000);
+
+start();
+</script>
+</body>
+</html>
