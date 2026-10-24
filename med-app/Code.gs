@@ -617,3 +617,5 @@ function randomToken_(len) {
   for (let i = 0; i < len; i++) out += chars.charAt(((bytes[i % bytes.length] + 256) % 256) % chars.length);
   return out;
 }
+
+// ===== Code.gs 끝 (이 줄이 보이면 끝까지 붙여넣은 것) =====
