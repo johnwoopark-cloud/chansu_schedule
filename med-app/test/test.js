@@ -240,4 +240,48 @@ test('비밀 키 바꾸면 예전 키 차단', () => {
   assert.strictEqual(c.api_checkKey(env.key()).ok, true);
 });
 
+test('약 수정: 같은 행을 고치고 ID·시작일·기록은 유지', () => {
+  const { env, c, k, sched } = fresh();
+  env.setNow(at('08:03'));
+  c.api_takeDose(k, '엄마', sched.id, '08:00');
+  env.setNow(at('09:00', '2026-10-25'));
+  const r = c.api_updateMed(k, sched.id, { name: '케프라정', dose: '250mg', stock: '30정', prn: false, times: ['08:00', '13:00', '20:00'] });
+  const m = r.state.meds.find((x) => x.id === sched.id);
+  deq(m.times, ['08:00', '13:00', '20:00']);
+  assert.strictEqual(m.name, '케프라정');
+  assert.strictEqual(m.unit, 'mg');
+  assert.strictEqual(m.stock, 30);
+  assert.strictEqual(env.sheets['약목록'].getLastRow(), 3, '행이 늘지 않음');
+  const row = env.sheets['약목록'].rows.find((x) => x[0] === sched.id);
+  assert.strictEqual(row[10], '2026-10-24', '시작일 유지');
+  assert.strictEqual(env.sheets['복약기록'].getLastRow(), 2, '지난 기록 유지');
+  assert.throws(() => c.api_updateMed(k, sched.id, { name: '', times: ['08:00'] }), /이름/);
+  assert.throws(() => c.api_updateMed(k, 'nope', { name: 'A', times: ['08:00'] }), /찾을 수 없어요/);
+  assert.throws(() => c.api_updateMed('wrong', sched.id, { name: 'A', times: ['08:00'] }), /AUTH/);
+});
+
+test('약 수정: 정해진 시간 ↔ 필요 시 전환', () => {
+  const { c, k, prn } = fresh();
+  let m = c.api_updateMed(k, prn.id, { name: '두통약', dose: '5ml', stock: '90', prn: false, times: ['21:00'] }).state.meds.find((x) => x.id === prn.id);
+  assert.strictEqual(m.prn, false);
+  deq(m.times, ['21:00']);
+  m = c.api_updateMed(k, prn.id, { name: '두통약', dose: '5ml', stock: '90', prn: true, gapH: 8, times: ['21:00'] }).state.meds.find((x) => x.id === prn.id);
+  assert.strictEqual(m.prn, true);
+  deq(m.times, []);
+  assert.strictEqual(m.gapH, 8);
+});
+
+test('복용 중단: 목록·알림에서 빠지고 기록은 남음', () => {
+  const { env, c, k, sched } = fresh();
+  env.setNow(at('08:03'));
+  c.api_takeDose(k, '엄마', sched.id, '08:00');
+  const r = c.api_stopMed(k, sched.id);
+  assert.strictEqual(r.state.meds.find((x) => x.id === sched.id), undefined);
+  assert.strictEqual(env.sheets['복약기록'].getLastRow(), 2);
+  env.setNow(at('20:45')); c.checkReminders();
+  assert.strictEqual(env.fetches.length, 0, '중단한 약은 알림 없음');
+  assert.throws(() => c.api_takeDose(k, '엄마', sched.id, '20:00'), /찾을 수 없어요/);
+  assert.throws(() => c.api_stopMed(k, sched.id), /찾을 수 없어요/);
+});
+
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));

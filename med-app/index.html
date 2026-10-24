@@ -312,7 +312,7 @@ function renderToday(d) {
     h += '</div>';
   }
 
-  h += '<div class="card"><div class="between" style="align-items:center"><span class="h2">복용 중인 약 · ' + d.meds.length + '개</span><button class="btn ghost" data-act="openAddMed">+ 약 추가</button></div>';
+  h += '<div class="card"><div class="between" style="align-items:center"><span class="h2">복용 중인 약</span><button class="btn ghost" data-act="openAddMed">+ 약 추가</button></div>';
   d.meds.forEach(function (m) {
     var pct = 0, txt = '남은 양 미입력';
     if (m.stock != null) {
@@ -320,11 +320,13 @@ function renderToday(d) {
       pct = m.daysLeft != null ? Math.min(100, Math.round(m.daysLeft / 60 * 100)) : Math.min(100, m.stock);
     }
     h += '<div style="display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line2)">' +
-      '<div class="between"><span class="name">' + esc(m.name) + '</span><span class="sub" style="color:var(--ink2)">' + esc(m.dose) + ' · ' + (m.prn ? '필요할 때' : esc(m.times.join(' · '))) + '</span></div>' +
+      '<div style="display:flex;align-items:center;gap:10px"><div class="info" style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0"><span class="name">' + esc(m.name) + '</span>' +
+      '<span class="sub" style="color:var(--ink2)">' + esc(m.dose) + ' · ' + (m.prn ? '필요할 때 · 최소 ' + esc(m.gapH) + '시간 간격' : esc(m.times.join(' · '))) + '</span></div>' +
+      '<button class="btn ghost" data-act="openEditMed" data-v="' + esc(m.id) + '" aria-label="' + esc(m.name) + ' 수정">수정</button></div>' +
       '<div style="display:flex;align-items:center;gap:10px"><div class="bar"><i class="' + (m.low ? 'low' : '') + '" style="width:' + pct + '%"></i></div>' +
       '<span class="sub' + (m.low ? ' warn' : '') + '" style="white-space:nowrap">' + txt + '</span></div></div>';
   });
-  h += '<div class="sub">약 이름·용량 수정이나 복용 중단은 스프레드시트의 "약목록"에서 해 주세요.</div></div>';
+  h += '<div class="sub">[수정]에서 이름·용량·시간·남은 양을 바꾸거나 복용을 중단할 수 있어요.</div></div>';
   return h;
 }
 
@@ -390,8 +392,11 @@ function renderCalendar() {
 function renderAddMed() {
   var f = S.form;
   var canSave = f.name.trim() && (f.prn || f.times.length);
-  var h = '<div class="overlay" data-act="closeSheet" data-self="1"><div class="sheet" role="dialog" aria-label="약 추가">' +
-    '<div class="between" style="align-items:center"><span style="font-size:18px;font-weight:800">약 추가</span><button class="btn ghost" data-act="closeSheet">닫기</button></div>' +
+  var title = f.id ? '약 수정' : '약 추가';
+  var timeChoices = TIME_CHOICES.concat(f.times.filter(function (t) { return TIME_CHOICES.indexOf(t) < 0; })).sort();
+  var gapChoices = [4, 6, 8, 12].concat([4, 6, 8, 12].indexOf(f.gapH) < 0 ? [f.gapH] : []).sort(function (a, b) { return a - b; });
+  var h = '<div class="overlay" data-act="closeSheet" data-self="1"><div class="sheet" role="dialog" aria-label="' + title + '">' +
+    '<div class="between" style="align-items:center"><span style="font-size:18px;font-weight:800">' + title + '</span><button class="btn ghost" data-act="closeSheet">닫기</button></div>' +
     '<div class="field"><label class="lbl" for="mName">약 이름</label><input id="mName" value="' + esc(f.name) + '" placeholder="예: 데파킨 시럽" maxlength="40" data-in="form.name"></div>' +
     '<div class="grid2"><div class="field"><label class="lbl" for="mDose">1회 용량</label><input id="mDose" value="' + esc(f.dose) + '" placeholder="예: 2ml" maxlength="20" data-in="form.dose"></div>' +
     '<div class="field"><label class="lbl" for="mStock">현재 남은 양</label><input id="mStock" value="' + esc(f.stock) + '" placeholder="예: 60ml" maxlength="20" data-in="form.stock"></div></div>' +
@@ -399,12 +404,17 @@ function renderAddMed() {
     chip('정해진 시간', !f.prn, 'formKind', '0') + chip('필요할 때 (두통 등)', f.prn, 'formKind', '1') + '</div></div>';
   if (!f.prn) {
     h += '<div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">복용 시간 <span class="sub" style="font-weight:500">(여러 개 선택)</span></span><div class="chips">' +
-      TIME_CHOICES.map(function (t) { return chip(t, f.times.indexOf(t) >= 0, 'formTime'); }).join('') + '</div></div>';
+      timeChoices.map(function (t) { return chip(t, f.times.indexOf(t) >= 0, 'formTime'); }).join('') + '</div></div>';
   } else {
     h += '<div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">최소 복용 간격 <span class="sub" style="font-weight:500">(의사·약사 안내대로)</span></span><div class="chips">' +
-      [4, 6, 8, 12].map(function (g) { return chip(g + '시간', f.gapH === g, 'formGap', String(g)); }).join('') + '</div></div>';
+      gapChoices.map(function (g) { return chip(g + '시간', f.gapH === g, 'formGap', String(g)); }).join('') + '</div></div>';
   }
-  h += '<button class="btn wide' + (canSave ? '' : ' gray') + '" data-act="saveMed"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '추가하기') + '</button></div></div>';
+  h += '<button class="btn wide' + (canSave ? '' : ' gray') + '" data-act="saveMed"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : f.id ? '저장하기' : '추가하기') + '</button>';
+  if (f.id) {
+    h += '<button class="btn wide outline" style="border-color:var(--orange);color:var(--orange)" data-act="stopMed"' + (S.busy ? ' disabled' : '') + '>이 약 복용 중단</button>' +
+      '<div class="sub">복용을 중단해도 지난 기록은 남아요. 다시 먹게 되면 새로 추가해 주세요.</div>';
+  }
+  h += '</div></div>';
   return h;
 }
 
@@ -483,7 +493,23 @@ var ACTIONS = {
     var f = S.form;
     if (!f.name.trim()) { toast('약 이름을 적어 주세요'); return; }
     if (!f.prn && !f.times.length) { toast('복용 시간을 하나 이상 골라 주세요'); return; }
-    act('api_addMed', f).then(function (res) { if (res) { S.sheet = null; toast(f.name + ' 추가됨'); } });
+    var p = f.id ? act('api_updateMed', f.id, f) : act('api_addMed', f);
+    p.then(function (res) { if (res) { S.sheet = null; toast(f.name + (f.id ? ' 수정됨' : ' 추가됨')); } });
+  },
+  openEditMed: function (id) {
+    var m = S.data.meds.filter(function (x) { return x.id === id; })[0];
+    if (!m) return;
+    S.form = {
+      id: m.id, name: m.name, dose: m.dose === '-' ? '' : m.dose,
+      stock: m.stock == null ? '' : m.stock + (m.unit || ''),
+      prn: m.prn, times: m.times.slice(), gapH: m.gapH || 4
+    };
+    S.sheet = 'addMed'; render();
+  },
+  stopMed: function () {
+    var f = S.form;
+    if (!confirm(f.name + ' 복용을 중단할까요?\n오늘 화면과 알림에서 빠지고, 지난 기록은 남아요.')) return;
+    act('api_stopMed', f.id).then(function (res) { if (res) { S.sheet = null; toast(f.name + ' 복용 중단됨'); } });
   },
   szOne: function (v) { var i = v.indexOf('|'); var k = v.slice(0, i), x = v.slice(i + 1); S.sz[k] = S.sz[k] === x && k !== 'duration' ? '' : x; render(); },
   szAura: function (v) { var a = S.sz.aura, i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); render(); },

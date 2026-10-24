@@ -141,6 +141,38 @@ function api_takePrn(key, who, medId, reason, force) {
 
 function api_addMed(key, m) {
   auth_(key);
+  const fields = medFields_(m);
+  return withLock_(() => {
+    appendRow_(SHEETS.MEDS, Object.assign({ 'ID': newId_('M') }, fields, { '사용중': 'Y', '시작일': today_() }));
+    return { status: 'ok', state: todayState_() };
+  });
+}
+
+/** 약 수정: ID와 시작일, 지난 기록은 그대로 두고 나머지 칸을 바꾼다 */
+function api_updateMed(key, id, m) {
+  auth_(key);
+  const fields = medFields_(m);
+  return withLock_(() => {
+    const med = findMed_(id);
+    if (!med) throw new Error('약 정보를 찾을 수 없어요. 새로고침 해 주세요.');
+    updateRow_(SHEETS.MEDS, med._row, fields);
+    return { status: 'ok', state: todayState_() };
+  });
+}
+
+/** 복용 중단: 시트의 사용중을 N으로 (지난 기록은 남는다) */
+function api_stopMed(key, id) {
+  auth_(key);
+  return withLock_(() => {
+    const med = findMed_(id);
+    if (!med) throw new Error('약 정보를 찾을 수 없어요. 새로고침 해 주세요.');
+    updateRow_(SHEETS.MEDS, med._row, { '사용중': 'N' });
+    return { status: 'ok', state: todayState_() };
+  });
+}
+
+/** 화면에서 받은 약 정보를 검사해서 약목록 시트의 칸 값으로 바꾼다 */
+function medFields_(m) {
   m = m || {};
   const name = String(m.name || '').trim().slice(0, 40);
   const dose = String(m.dose || '').trim().slice(0, 20);
@@ -151,17 +183,13 @@ function api_addMed(key, m) {
   if (!name) throw new Error('약 이름을 적어 주세요.');
   if (!prn && !times.length) throw new Error('복용 시간을 하나 이상 골라 주세요.');
   const perNum = parseFloat(dose);
-  const unitMatch = (dose.match(/[^\d.\s]+/) || [''])[0] || (String(m.stock || '').match(/[^\d.\s]+/) || ['ml'])[0];
-  return withLock_(() => {
-    appendRow_(SHEETS.MEDS, {
-      'ID': newId_('M'), '약이름': name, '1회용량': dose || '-',
-      '1회사용량': isNaN(perNum) ? '' : String(perNum), '단위': unitMatch,
-      '방식': prn ? KIND_PRN : KIND_SCHEDULED, '복용시각': times.join(','),
-      '최소간격(시간)': prn ? String(gapH) : '', '남은양': isNaN(stockNum) ? '' : String(stockNum),
-      '사용중': 'Y', '시작일': today_(),
-    });
-    return { status: 'ok', state: todayState_() };
-  });
+  const unit = (dose.match(/[^\d.\s]+/) || [''])[0] || (String(m.stock || '').match(/[^\d.\s]+/) || ['ml'])[0];
+  return {
+    '약이름': name, '1회용량': dose || '-',
+    '1회사용량': isNaN(perNum) ? '' : String(perNum), '단위': unit,
+    '방식': prn ? KIND_PRN : KIND_SCHEDULED, '복용시각': times.join(','),
+    '최소간격(시간)': prn ? String(gapH) : '', '남은양': isNaN(stockNum) ? '' : String(stockNum),
+  };
 }
 
 function api_saveSeizure(key, who, d) {
@@ -431,10 +459,18 @@ function appendRow_(def, obj) {
 }
 
 function setCell_(def, rowNum, header, value) {
+  const patch = {};
+  patch[header] = value;
+  updateRow_(def, rowNum, patch);
+}
+
+function updateRow_(def, rowNum, obj) {
   const sh = sheet_(def);
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map((h) => String(h).trim());
-  const col = head.indexOf(header) + 1;
-  if (col > 0) sh.getRange(rowNum, col).setNumberFormat('@').setValue(String(value));
+  Object.keys(obj).forEach((h) => {
+    const col = head.indexOf(h) + 1;
+    if (col > 0) sh.getRange(rowNum, col).setNumberFormat('@').setValue(String(obj[h]));
+  });
 }
 
 function readMeds_() {

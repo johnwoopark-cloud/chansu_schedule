@@ -98,10 +98,30 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await page.click('[data-act="saveMed"]');
   await settle();
   let t = await text();
-  assert.match(t, /복용 중인 약 · 3개/);
+  assert.match(t, /복용 중인 약\n/);
+  assert.doesNotMatch(t, /복용 중인 약 ·/, '약 개수 표시 없음');
   assert.match(t, /08:00[\s\S]*0 \/ 2 완료/);
   assert.match(t, /필요할 때 먹는 약/);
   assert.match(t, /데파킨 시럽[\s\S]*20ml · 10일분/);
+
+  // 5-1. 약 수정: 데파킨 용량 2ml → 2.5ml, 20:00 추가, 남은 양 25ml
+  await page.click('[data-act="openEditMed"][aria-label="데파킨 시럽 수정"]');
+  assert.strictEqual(await page.inputValue('#mName'), '데파킨 시럽');
+  assert.strictEqual(await page.inputValue('#mDose'), '2ml');
+  assert.strictEqual(await page.inputValue('#mStock'), '20ml');
+  assert.match(await text(), /약 수정[\s\S]*저장하기[\s\S]*이 약 복용 중단/);
+  await page.fill('#mDose', '2.5ml');
+  await page.fill('#mStock', '25ml');
+  await page.click('[data-act="formTime"][data-v="20:00"]');
+  await snap('edit-med');
+  await page.click('[data-act="saveMed"]');
+  await settle();
+  t = await text();
+  assert.match(t, /데파킨 시럽 수정됨/);
+  assert.match(t, /20:00[\s\S]*0 \/ 2 완료/);
+  assert.match(t, /데파킨 시럽\n2.5ml · 08:00 · 20:00[\s\S]*25ml · 5일분/);
+  assert.strictEqual(Object.keys(env.sheets).length, 3);
+  assert.strictEqual(env.sheets['약목록'].getLastRow(), 4, '수정은 새 행을 만들지 않음');
 
   // 6. 복용 기록
   env.setNow(at('08:03'));
@@ -186,6 +206,17 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   assert.match(t, /두통약 필요 시 · 두통/);
   assert.match(t, /이번 달 경련\s*1회/);
   await snap('calendar');
+
+  // 9-1. 복용 중단: 데파킨을 빼면 오늘 화면에서 사라지고 지난 기록은 남음
+  await page.click('nav [data-v="today"]');
+  await settle();
+  await page.click('[data-act="openEditMed"][aria-label="데파킨 시럽 수정"]');
+  await page.click('[data-act="stopMed"]');
+  await settle();
+  t = await text();
+  assert.match(t, /데파킨 시럽 복용 중단됨/);
+  assert.doesNotMatch(t.replace(/데파킨 시럽 복용 중단됨/, ''), /데파킨/);
+  assert.ok(env.sheets['복약기록'].rows.some((r) => r[5] === '데파킨 시럽'), '지난 기록 유지');
 
   // 10. 설정 → 로그아웃
   await page.click('[data-act="openSettings"]');
