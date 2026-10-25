@@ -17,10 +17,13 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   const APP_URL = 'http://localhost:PORT/';
 
   const tpl = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  assert.ok(tpl.includes('var SHOW_SEIZURE = false;'), '기본값은 경련 기록 꺼짐');
+  let showSeizure = true; // 기능 자체는 켜서 검사하고, 마지막에 기본값(꺼짐)을 따로 확인
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     const k = (u.searchParams.get('k') || '').replace(/[^A-Za-z0-9]/g, '');
     const html = tpl
+      .replace('var SHOW_SEIZURE = false;', 'var SHOW_SEIZURE = ' + showSeizure + ';')
       .replace('<?!= jsonForHtml_(urlKey) ?>', JSON.stringify(k))
       .replace('<?!= jsonForHtml_(appUrl) ?>', JSON.stringify(APP_URL.replace('PORT', server.address().port)))
       .replace('<head>', '<head><script>window.google={script:{get run(){return makeRun();}}};function makeRun(){var ok,fail;var p=new Proxy({},{get:function(t,n){if(n==="withSuccessHandler")return function(f){ok=f;return p;};if(n==="withFailureHandler")return function(f){fail=f;return p;};return function(){var a=[].slice.call(arguments);window.__gas(n,a).then(function(r){if(r&&r.__err)fail&&fail(new Error(r.__err));else ok&&ok(r);});};}});return p;}</script>');
@@ -183,6 +186,7 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   env.setNow(at('14:10'));
   await page.click('nav [data-v="seizure"]');
   await settle();
+  await page.fill('#szDate', '2026-10-24'); // 브라우저는 실제 날짜를 쓰므로 고정
   await page.fill('#szTime', '14:02');
   await page.click('[data-act="saveSz"]');
   await settle();
@@ -240,6 +244,27 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await snap('old-server');
   oldServer = false;
   await page.click('[data-act="closeSheet"]');
+  await page.reload();
+  await settle();
+
+  // 9-3. 기본값(경련 기록 꺼짐): 탭·달력 표시·통계에서 빠지고 필요 시 복용 횟수가 보임
+  showSeizure = false;
+  await page.reload();
+  await settle();
+  t = await text();
+  assert.doesNotMatch(t, /경련/);
+  assert.strictEqual(await page.locator('nav.tabs button').count(), 2);
+  await page.click('nav [data-v="cal"]');
+  await page.waitForSelector('.cal');
+  await page.click('.cal button[data-v="2026-10-24"]');
+  await settle();
+  t = await text();
+  assert.doesNotMatch(t, /경련/);
+  assert.match(t, /이번 달 필요 시 복용\s*2회/);
+  assert.match(t, /두통약 필요 시 · 두통/);
+  await snap('no-seizure-calendar');
+  await page.click('nav [data-v="today"]');
+  showSeizure = true;
   await page.reload();
   await settle();
 
