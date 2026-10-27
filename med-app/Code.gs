@@ -1,5 +1,5 @@
 /**
- * 우리집 복약·상담대비 기록 (Google Apps Script 웹앱)
+ * 우리집 복약·상담대비·상담검사 기록 (Google Apps Script 웹앱)
  *
  * 데이터는 이 스크립트가 붙어 있는 구글 스프레드시트에 저장된다.
  * 접속은 비밀 키(APP_KEY) 방식: 가족 주소(웹앱 URL?k=키)를 한 번 열면 그 폰에 키가 저장된다.
@@ -29,10 +29,18 @@ const SHEETS = {
     oldNames: ['경련기록'],  // 예전 이름의 탭이 있으면 자동으로 이름을 바꿔 그대로 쓴다
     headers: ['기록ID', '날짜', '시작시각', '지속시간', '종류', '상황', '전조증상', '당시복약', '메모', '기록자', '저장시각'],
   },
+  VISITS: {
+    name: '상담검사기록',
+    headers: ['기록ID', '구분', '날짜', '담당선생님', '상담시간', '상담내용', '검사내용', '검사결과', '기록자', '저장시각', '수정시각'],
+  },
 };
 
+// 상담·검사 탭의 구분. 검사는 검사내용·검사결과를, 나머지는 담당선생님·상담시간·상담내용을 쓴다.
+const VISIT_KINDS = ['상담센터', '병원 상담', '검사'];
+const VISIT_TEST = '검사';
+
 // index.html의 CLIENT_VERSION과 같아야 한다. 둘이 다르면 화면에 "파일 버전이 달라요" 안내가 뜬다.
-const APP_VERSION = '6';
+const APP_VERSION = '7';
 
 const KIND_SCHEDULED = '정해진시간';
 const KIND_PRN = '필요시';
@@ -214,6 +222,63 @@ function api_saveSeizure(key, who, d) {
   return { status: 'ok' };
 }
 
+// ───────────────────────── 상담·검사 기록 ─────────────────────────
+
+/** 상담·검사 기록 전체 (최근 날짜가 먼저) */
+function api_visits(key) {
+  auth_(key);
+  return visitList_();
+}
+
+/** 새로 저장하거나, v.id가 있으면 그 기록을 고친다 (검사 결과를 나중에 채우는 경우 등) */
+function api_saveVisit(key, who, v) {
+  auth_(key);
+  who = checkWho_(who);
+  v = v || {};
+  const clip = (x, n) => String(x == null ? '' : x).trim().slice(0, n);
+  const kind = VISIT_KINDS.indexOf(v.kind) >= 0 ? v.kind : '';
+  if (!kind) throw new Error('구분(상담센터 / 병원 상담 / 검사)을 골라 주세요.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v.date || '')) throw new Error('날짜를 골라 주세요.');
+  const isTest = kind === VISIT_TEST;
+  const fields = {
+    '구분': kind, '날짜': v.date,
+    '담당선생님': isTest ? '' : clip(v.teacher, 40),
+    '상담시간': isTest ? '' : clip(v.time, 40),
+    '상담내용': isTest ? '' : clip(v.content, 3000),
+    '검사내용': isTest ? clip(v.testName, 500) : '',
+    '검사결과': isTest ? clip(v.result, 3000) : '',
+  };
+  if (isTest && !fields['검사내용']) throw new Error('검사 내용을 적어 주세요.');
+  if (!isTest && !fields['상담내용'] && !fields['담당선생님']) throw new Error('담당 선생님이나 상담 내용을 적어 주세요.');
+  return withLock_(() => {
+    if (v.id) {
+      const row = readTable_(SHEETS.VISITS).find((r) => r['기록ID'] === v.id);
+      if (!row) throw new Error('기록을 찾을 수 없어요. 새로고침 해 주세요.');
+      updateRow_(SHEETS.VISITS, row._row, Object.assign(fields, { '수정시각': stamp_() }));
+    } else {
+      appendRow_(SHEETS.VISITS, Object.assign({ '기록ID': newId_('V') }, fields, { '기록자': who, '저장시각': stamp_() }));
+    }
+    return { status: 'ok', visits: visitList_() };
+  });
+}
+
+function api_deleteVisit(key, id) {
+  auth_(key);
+  return withLock_(() => {
+    const row = readTable_(SHEETS.VISITS).find((r) => r['기록ID'] === id);
+    if (row) sheet_(SHEETS.VISITS).deleteRow(row._row);
+    return { status: 'ok', visits: visitList_() };
+  });
+}
+
+function visitList_() {
+  return readTable_(SHEETS.VISITS).filter((r) => r['기록ID']).map((r) => ({
+    id: r['기록ID'], kind: r['구분'], date: r['날짜'], teacher: r['담당선생님'], time: r['상담시간'],
+    content: r['상담내용'], testName: r['검사내용'], result: r['검사결과'], by: r['기록자'],
+    savedAt: r['저장시각'], updatedAt: r['수정시각'], _order: r._row,
+  })).sort((a, b) => (a.date === b.date ? b._order - a._order : a.date < b.date ? 1 : -1));
+}
+
 function api_month(key, year, month) {
   auth_(key);
   year = Number(year);
@@ -324,14 +389,7 @@ function removeOldTriggers_() {
 /** 처음 한 번: 시트 만들기, 비밀 키 만들기 (예전 알림 트리거가 있으면 지움) */
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  Object.keys(SHEETS).forEach((k) => {
-    const def = SHEETS[k];
-    let sh = findSheet_(def);
-    if (!sh) sh = ss.insertSheet(def.name);
-    sh.getRange(1, 1, sh.getMaxRows(), def.headers.length).setNumberFormat('@');
-    sh.getRange(1, 1, 1, def.headers.length).setValues([def.headers]).setFontWeight('bold').setBackground('#EEF1F5');
-    sh.setFrozenRows(1);
-  });
+  Object.keys(SHEETS).forEach((k) => prepareSheet_(findSheet_(SHEETS[k]) || ss.insertSheet(SHEETS[k].name), SHEETS[k]));
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty('APP_KEY')) props.setProperty('APP_KEY', randomToken_(24));
   removeOldTriggers_();
@@ -376,9 +434,15 @@ function findSheet_(def) {
   return sh;
 }
 
+/** 시트를 돌려준다. 없으면 머리글을 넣어 새로 만든다 (새 탭이 생겨도 setup을 다시 안 돌려도 되게) */
 function sheet_(def) {
-  const sh = findSheet_(def);
-  if (!sh) throw new Error('"' + def.name + '" 시트가 없어요. 관리자가 setup()을 실행해야 해요.');
+  return findSheet_(def) || prepareSheet_(SpreadsheetApp.getActiveSpreadsheet().insertSheet(def.name), def);
+}
+
+function prepareSheet_(sh, def) {
+  sh.getRange(1, 1, sh.getMaxRows(), def.headers.length).setNumberFormat('@');
+  sh.getRange(1, 1, 1, def.headers.length).setValues([def.headers]).setFontWeight('bold').setBackground('#EEF1F5');
+  sh.setFrozenRows(1);
   return sh;
 }
 

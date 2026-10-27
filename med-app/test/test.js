@@ -28,7 +28,7 @@ test('setup: 시트와 비밀 키, 알림 트리거는 만들지 않음', () => 
   env.triggers.push({ getHandlerFunction: () => 'checkReminders' }); // 예전 버전이 남긴 트리거
   env.triggers.push({ getHandlerFunction: () => 'somethingElse' });
   env.ctx.setup();
-  deq(Object.keys(env.sheets).sort(), ['상담대비기록', '복약기록', '약목록'].sort());
+  deq(Object.keys(env.sheets).sort(), ['상담대비기록', '복약기록', '약목록', '상담검사기록'].sort());
   assert.match(env.props.APP_KEY, /^[A-Za-z0-9]{24}$/);
   assert.strictEqual(env.props.NTFY_TOPIC, undefined);
   deq(env.triggers.map((t) => t.getHandlerFunction()), ['somethingElse'], '예전 알림 트리거만 지움');
@@ -304,7 +304,7 @@ test('예전 "경련기록" 탭은 이름만 바꿔서 기록 유지', () => {
   assert.ok(!env.sheets['경련기록'], '예전 탭 이름 없어짐');
   assert.strictEqual(env.sheets['상담대비기록'], old, '같은 탭을 그대로 사용');
   assert.strictEqual(old.rows[1][0], 'S1', '기존 기록 유지');
-  assert.strictEqual(Object.keys(env.sheets).length, 3, '새 탭을 따로 만들지 않음');
+  assert.ok(!Object.keys(env.sheets).includes('경련기록') && Object.keys(env.sheets).filter((n) => n === '상담대비기록').length === 1, '새 탭을 따로 만들지 않음');
 });
 
 test('setup 없이도 예전 탭을 찾아 이름을 바꿈', () => {
@@ -322,6 +322,54 @@ test('상담대비 기록: 새 선택지 저장, 외부 전송 없음', () => {
   deq(r, { status: 'ok' });
   deq(env.sheets['상담대비기록'].rows[1].slice(3, 6), ['1시간 이상', '전신 떨림', '핸드폰 중']);
   assert.strictEqual(env.fetches.length, 0);
+});
+
+test('상담·검사: 상담 기록 저장, 검사 결과는 나중에 채우기', () => {
+  const { env, c, k } = fresh();
+  env.setNow(at('16:00'));
+  let r = c.api_saveVisit(k, '엄마', { kind: '상담센터', date: '2026-10-20', teacher: '김선생님', time: '15:00~15:50', content: '학교 적응 이야기\n수면 습관 점검' });
+  assert.strictEqual(r.status, 'ok');
+  r = c.api_saveVisit(k, '아빠', { kind: '병원 상담', date: '2026-10-24', teacher: '이교수님', time: '10:30', content: '약 용량 유지' });
+  r = c.api_saveVisit(k, '아빠', { kind: '검사', date: '2026-10-22', testName: '뇌파검사(EEG)', result: '' });
+  deq(r.visits.map((v) => [v.date, v.kind]), [['2026-10-24', '병원 상담'], ['2026-10-22', '검사'], ['2026-10-20', '상담센터']], '최근 날짜 먼저');
+  const consult = r.visits.find((v) => v.kind === '상담센터');
+  assert.strictEqual(consult.content, '학교 적응 이야기\n수면 습관 점검', '줄바꿈 유지');
+  assert.strictEqual(consult.by, '엄마');
+  const test = r.visits.find((v) => v.kind === '검사');
+  assert.strictEqual(test.result, '');
+  assert.strictEqual(test.teacher, '', '검사에는 상담 칸을 쓰지 않음');
+  env.setNow(at('18:00'));
+  r = c.api_saveVisit(k, '엄마', { id: test.id, kind: '검사', date: '2026-10-22', testName: '뇌파검사(EEG)', result: '이상 소견 없음', teacher: '무시됨' });
+  const t2 = r.visits.find((v) => v.id === test.id);
+  assert.strictEqual(t2.result, '이상 소견 없음');
+  assert.strictEqual(t2.teacher, '');
+  assert.strictEqual(t2.by, '아빠', '처음 기록한 사람 유지');
+  assert.strictEqual(t2.updatedAt, '2026-10-24 18:00:00');
+  assert.strictEqual(env.sheets['상담검사기록'].getLastRow(), 4, '수정은 새 행을 만들지 않음');
+  r = c.api_deleteVisit(k, consult.id);
+  deq(r.visits.map((v) => v.kind), ['병원 상담', '검사']);
+  assert.strictEqual(env.sheets['상담검사기록'].getLastRow(), 3);
+});
+
+test('상담·검사: 입력 검사와 인증', () => {
+  const { c, k } = fresh();
+  assert.throws(() => c.api_saveVisit(k, '엄마', { kind: '기타', date: '2026-10-20', content: 'x' }), /구분/);
+  assert.throws(() => c.api_saveVisit(k, '엄마', { kind: '상담센터', date: '', content: 'x' }), /날짜/);
+  assert.throws(() => c.api_saveVisit(k, '엄마', { kind: '상담센터', date: '2026-10-20' }), /선생님이나 상담 내용/);
+  assert.throws(() => c.api_saveVisit(k, '엄마', { kind: '검사', date: '2026-10-20', result: 'x' }), /검사 내용/);
+  assert.throws(() => c.api_saveVisit(k, '엄마', { id: 'nope', kind: '검사', date: '2026-10-20', testName: 'x' }), /찾을 수 없어요/);
+  assert.throws(() => c.api_saveVisit(k, '할머니', { kind: '검사', date: '2026-10-20', testName: 'x' }), /누가/);
+  assert.throws(() => c.api_visits('wrong'), /AUTH/);
+  assert.throws(() => c.api_deleteVisit('wrong', 'x'), /AUTH/);
+});
+
+test('새로 생긴 탭은 setup을 다시 안 돌려도 자동으로 만들어짐', () => {
+  const { env, c, k } = fresh();
+  delete env.sheets['상담검사기록'];                 // 예전 버전으로 설치한 시트 상황
+  deq(c.api_visits(k), []);
+  assert.deepStrictEqual(env.sheets['상담검사기록'].rows[0].slice(0, 3), ['기록ID', '구분', '날짜']);
+  c.api_saveVisit(k, '엄마', { kind: '검사', date: '2026-10-20', testName: 'MRI' });
+  assert.strictEqual(c.api_visits(k)[0].testName, 'MRI');
 });
 
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));

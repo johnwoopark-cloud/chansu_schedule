@@ -129,7 +129,7 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   assert.match(t, /데파킨 시럽 수정됨/);
   assert.match(t, /20:00[\s\S]*0 \/ 2 완료/);
   assert.match(t, /데파킨 시럽\n2.5ml · 08:00 · 20:00[\s\S]*25ml · 5일분/);
-  assert.strictEqual(Object.keys(env.sheets).length, 3);
+  assert.strictEqual(Object.keys(env.sheets).length, 4);
   assert.strictEqual(env.sheets['약목록'].getLastRow(), 4, '수정은 새 행을 만들지 않음');
 
   // 6. 복용 기록
@@ -313,14 +313,14 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await page.reload();
   await settle();
   t = await text();
-  assert.doesNotMatch(t, /상담/);
-  assert.strictEqual(await page.locator('nav.tabs button').count(), 2);
+  assert.doesNotMatch(t, /상담대비/);
+  assert.strictEqual(await page.locator('nav.tabs button').count(), 3);
   await page.click('nav [data-v="cal"]');
   await page.waitForSelector('.cal');
   await page.click('.cal button[data-v="2026-10-24"]');
   await settle();
   t = await text();
-  assert.doesNotMatch(t, /상담/);
+  assert.doesNotMatch(t, /상담대비/);
   assert.match(t, /필요 시 복용\s*2회/);
   assert.match(t, /두통약 필요 시 · 두통/);
   await snap('no-seizure-calendar');
@@ -328,6 +328,92 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   showSeizure = true;
   await page.reload();
   await settle();
+
+  // 9-4. 상담·검사 탭
+  assert.strictEqual(await page.locator('nav.tabs button').count(), 4);
+  env.setNow(at('19:00', '2026-10-25'));
+  await page.click('nav [data-v="visit"]');
+  await settle();
+  t = await text();
+  assert.match(t, /상담·검사/);
+  assert.match(t, /아직 기록이 없어요/);
+  // 상담센터 상담
+  await page.click('[data-act="openVisit"][data-v=""]');
+  assert.strictEqual(await page.locator('[data-act="vKind"][aria-pressed="true"]').innerText(), '상담센터');
+  await page.click('[data-act="saveVisit"]');
+  assert.match(await text(), /담당 선생님이나 상담 내용을 적어 주세요/);
+  await page.fill('#vDate', '2026-10-20');
+  await page.fill('#vTeacher', '김선생님');
+  await page.fill('#vTime', '15:00~15:50');
+  const longText = '학교 적응 이야기\n수면 습관 점검\n게임 시간 줄이기\n다음 상담 전까지 일기 쓰기\n엄마와 대화 시간 늘리기';
+  await page.fill('#vContent', longText);
+  await snap('visit-form');
+  await page.click('[data-act="saveVisit"]');
+  await settle();
+  t = await text();
+  assert.match(t, /상담센터 기록을 저장했어요/);
+  assert.match(t, /2026년 10월 20일 \(화\)/);
+  assert.match(t, /담당 김선생님 · 시간 15:00~15:50/);
+  assert.match(t, /전체 보기/, '긴 내용은 접어서 보여 줌');
+  await page.click('[data-act="vtoggle"]');
+  assert.match(await text(), /엄마와 대화 시간 늘리기/);
+  assert.match(await text(), /접기/);
+  // 병원 상담 (같은 종류가 아니면 선생님 추천 목록에 안 나옴)
+  await page.click('[data-act="openVisit"][data-v=""]');
+  await page.click('[data-act="vKind"][data-v="병원 상담"]');
+  assert.strictEqual(await page.locator('#vTeacherList option').count(), 0);
+  await page.fill('#vDate', '2026-10-24');
+  await page.fill('#vTeacher', '이교수님');
+  await page.fill('#vContent', '약 용량 유지');
+  await page.click('[data-act="saveVisit"]');
+  await settle();
+  // 검사 (결과는 나중에)
+  await page.click('[data-act="openVisit"][data-v=""]');
+  await page.click('[data-act="vKind"][data-v="검사"]');
+  assert.strictEqual(await page.locator('#vTeacher').count(), 0, '검사는 상담 칸 대신 검사 칸');
+  await page.fill('#vDate', '2026-10-22');
+  await page.click('[data-act="saveVisit"]');
+  assert.match(await text(), /검사 내용을 적어 주세요/);
+  await page.fill('#vTest', '뇌파검사(EEG)');
+  await page.click('[data-act="saveVisit"]');
+  await settle();
+  t = await text();
+  assert.match(t, /결과 대기/);
+  // 최근 날짜 먼저
+  const order = await page.locator('main .card b').allInnerTexts();
+  assert.deepStrictEqual(order.slice(0, 3), ['2026년 10월 24일 (토)', '2026년 10월 22일 (목)', '2026년 10월 20일 (화)']);
+  await snap('visits');
+  // 검사만 보기 → 결과 채우기
+  await page.click('[data-act="vfilter"][data-v="검사"]');
+  t = await text();
+  assert.doesNotMatch(t, /이교수님|김선생님/);
+  await page.click('[data-act="openVisit"][aria-label="2026-10-22 검사 기록 수정"]');
+  assert.strictEqual(await page.inputValue('#vTest'), '뇌파검사(EEG)');
+  await page.fill('#vResult', '이상 소견 없음\n6개월 뒤 재검');
+  await page.click('[data-act="saveVisit"]');
+  await settle();
+  t = await text();
+  assert.match(t, /기록을 고쳤어요/);
+  assert.match(t, /이상 소견 없음\n6개월 뒤 재검/);
+  assert.doesNotMatch(t, /결과 대기/);
+  assert.match(t, /기록: 엄마 · 수정함/);
+  // 같은 종류 새 기록에서는 예전 선생님 이름 추천
+  await page.click('[data-act="vfilter"][data-v="상담센터"]');
+  await page.click('[data-act="openVisit"][data-v=""]');
+  assert.deepStrictEqual(await page.locator('#vTeacherList option').evaluateAll((o) => o.map((x) => x.value)), ['김선생님']);
+  await page.click('.sheet [data-act="closeSheet"]');
+  // 삭제
+  await page.click('[data-act="vfilter"][data-v="전체"]');
+  await page.click('[data-act="openVisit"][aria-label="2026-10-24 병원 상담 기록 수정"]');
+  await page.click('[data-act="deleteVisit"]');
+  await settle();
+  t = await text();
+  assert.match(t, /기록을 삭제했어요/);
+  assert.doesNotMatch(t, /이교수님/);
+  const vrows = env.sheets['상담검사기록'].rows.slice(1).filter((r) => r.length);
+  assert.strictEqual(vrows.length, 2);
+  assert.deepStrictEqual(vrows.map((r) => r[1]).sort(), ['검사', '상담센터']);
+  assert.strictEqual(vrows.find((r) => r[1] === '상담센터')[5], longText, '줄바꿈 그대로 저장');
 
   // 10. 설정 → 로그아웃
   await page.click('[data-act="openSettings"]');
