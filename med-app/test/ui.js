@@ -193,11 +193,17 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   assert.match(await text(), /종류를 골라 주세요/);
   assert.match(await text(), /상담대비 기록/);
   t = await text();
-  assert.match(t, /10분 이상\s*30분 이상\s*1시간 이상/);
+  assert.match(t, /지속 시간\s*하나 선택\s*1분\s*5분\s*10분 이상\s*30분 이상\s*1시간 이상\s*기타/);
   assert.match(t, /전신 떨림\s*부분 떨림\s*멍해짐\s*기타/);
   assert.match(t, /수면 중\s*기상 직후\s*잠들기 전\s*공부 중\s*게임 중\s*핸드폰 중\s*일상생활 중\s*기타/);
   assert.doesNotMatch(t, /경련|2분|30초/);
-  await page.click('[data-v="duration|30분 이상"]');
+  assert.strictEqual(await page.locator('#szDurEtc').count(), 0, '기타를 고르기 전에는 입력 칸 없음');
+  await page.click('[data-v="duration|기타"]');
+  await page.fill('#szDurEtc', '3분 정도');
+  await page.click('[data-v="duration|5분"]');
+  assert.strictEqual(await page.locator('#szDurEtc').count(), 0, '다른 걸 고르면 입력 칸 숨김');
+  await page.click('[data-v="duration|기타"]');
+  assert.strictEqual(await page.inputValue('#szDurEtc'), '3분 정도', '적은 내용은 남아 있음');
   await page.click('[data-v="type|부분 떨림"]');
   await page.click('[data-v="situation|공부 중"]');
   await page.click('[data-act="szAura"][data-v="쓴맛"]');
@@ -209,7 +215,7 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   assert.match(await text(), /상담대비 기록을 저장했어요/);
   assert.doesNotMatch(await text(), /알림/);
   const szRow = env.sheets['상담대비기록'].getRange(2, 1, 1, 11).getDisplayValues()[0];
-  assert.deepStrictEqual(szRow.slice(1, 10), ['2026-10-24', '14:02', '30분 이상', '부분 떨림', '공부 중', '쓴맛', '제때 복용', '금방 회복, 잘 놀고 있음', '아이']);
+  assert.deepStrictEqual(szRow.slice(1, 10), ['2026-10-24', '14:02', '3분 정도', '부분 떨림', '공부 중', '쓴맛', '제때 복용', '금방 회복, 잘 놀고 있음', '아이']);
   assert.strictEqual(env.fetches.length, 0, '알림 전송 없음');
 
   // 9. 달력
@@ -219,7 +225,7 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await settle();
   t = await text();
   assert.match(t, /10월 24일 기록/);
-  assert.match(t, /상담대비 기록 14:02 · 30분 이상/);
+  assert.match(t, /상담대비 기록 14:02 · 3분 정도/);
   assert.match(t, /부분 떨림 · 공부 중/);
   assert.match(t, /두통약 필요 시 · 두통/);
   assert.match(t, /상담대비 기록\s*1회/);
@@ -329,13 +335,14 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await page.reload();
   await settle();
 
-  // 9-4. 상담·검사 탭
+  // 9-4. 상담 진료 탭
   assert.strictEqual(await page.locator('nav.tabs button').count(), 4);
   env.setNow(at('19:00', '2026-10-25'));
   await page.click('nav [data-v="visit"]');
   await settle();
   t = await text();
-  assert.match(t, /상담·검사/);
+  assert.match(t, /상담 진료/);
+  assert.doesNotMatch(t, /상담·검사/);
   assert.match(t, /아직 기록이 없어요/);
   // 상담센터 상담
   await page.click('[data-act="openVisit"][data-v=""]');
@@ -410,7 +417,7 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   t = await text();
   assert.match(t, /기록을 삭제했어요/);
   assert.doesNotMatch(t, /이교수님/);
-  const vrows = env.sheets['상담검사기록'].rows.slice(1).filter((r) => r.length);
+  const vrows = env.sheets['상담진료기록'].rows.slice(1).filter((r) => r.length);
   assert.strictEqual(vrows.length, 2);
   assert.deepStrictEqual(vrows.map((r) => r[1]).sort(), ['검사', '상담센터']);
   assert.strictEqual(vrows.find((r) => r[1] === '상담센터')[5], longText, '줄바꿈 그대로 저장');

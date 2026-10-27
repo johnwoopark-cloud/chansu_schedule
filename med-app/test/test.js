@@ -28,7 +28,7 @@ test('setup: 시트와 비밀 키, 알림 트리거는 만들지 않음', () => 
   env.triggers.push({ getHandlerFunction: () => 'checkReminders' }); // 예전 버전이 남긴 트리거
   env.triggers.push({ getHandlerFunction: () => 'somethingElse' });
   env.ctx.setup();
-  deq(Object.keys(env.sheets).sort(), ['상담대비기록', '복약기록', '약목록', '상담검사기록'].sort());
+  deq(Object.keys(env.sheets).sort(), ['상담대비기록', '복약기록', '약목록', '상담진료기록'].sort());
   assert.match(env.props.APP_KEY, /^[A-Za-z0-9]{24}$/);
   assert.strictEqual(env.props.NTFY_TOPIC, undefined);
   deq(env.triggers.map((t) => t.getHandlerFunction()), ['somethingElse'], '예전 알림 트리거만 지움');
@@ -324,7 +324,7 @@ test('상담대비 기록: 새 선택지 저장, 외부 전송 없음', () => {
   assert.strictEqual(env.fetches.length, 0);
 });
 
-test('상담·검사: 상담 기록 저장, 검사 결과는 나중에 채우기', () => {
+test('상담 진료: 상담 기록 저장, 검사 결과는 나중에 채우기', () => {
   const { env, c, k } = fresh();
   env.setNow(at('16:00'));
   let r = c.api_saveVisit(k, '엄마', { kind: '상담센터', date: '2026-10-20', teacher: '김선생님', time: '15:00~15:50', content: '학교 적응 이야기\n수면 습관 점검' });
@@ -345,13 +345,13 @@ test('상담·검사: 상담 기록 저장, 검사 결과는 나중에 채우기
   assert.strictEqual(t2.teacher, '');
   assert.strictEqual(t2.by, '아빠', '처음 기록한 사람 유지');
   assert.strictEqual(t2.updatedAt, '2026-10-24 18:00:00');
-  assert.strictEqual(env.sheets['상담검사기록'].getLastRow(), 4, '수정은 새 행을 만들지 않음');
+  assert.strictEqual(env.sheets['상담진료기록'].getLastRow(), 4, '수정은 새 행을 만들지 않음');
   r = c.api_deleteVisit(k, consult.id);
   deq(r.visits.map((v) => v.kind), ['병원 상담', '검사']);
-  assert.strictEqual(env.sheets['상담검사기록'].getLastRow(), 3);
+  assert.strictEqual(env.sheets['상담진료기록'].getLastRow(), 3);
 });
 
-test('상담·검사: 입력 검사와 인증', () => {
+test('상담 진료: 입력 검사와 인증', () => {
   const { c, k } = fresh();
   assert.throws(() => c.api_saveVisit(k, '엄마', { kind: '기타', date: '2026-10-20', content: 'x' }), /구분/);
   assert.throws(() => c.api_saveVisit(k, '엄마', { kind: '상담센터', date: '', content: 'x' }), /날짜/);
@@ -365,11 +365,26 @@ test('상담·검사: 입력 검사와 인증', () => {
 
 test('새로 생긴 탭은 setup을 다시 안 돌려도 자동으로 만들어짐', () => {
   const { env, c, k } = fresh();
-  delete env.sheets['상담검사기록'];                 // 예전 버전으로 설치한 시트 상황
+  delete env.sheets['상담진료기록'];                 // 예전 버전으로 설치한 시트 상황
   deq(c.api_visits(k), []);
-  assert.deepStrictEqual(env.sheets['상담검사기록'].rows[0].slice(0, 3), ['기록ID', '구분', '날짜']);
+  assert.deepStrictEqual(env.sheets['상담진료기록'].rows[0].slice(0, 3), ['기록ID', '구분', '날짜']);
   c.api_saveVisit(k, '엄마', { kind: '검사', date: '2026-10-20', testName: 'MRI' });
   assert.strictEqual(c.api_visits(k)[0].testName, 'MRI');
+});
+
+test('예전 "상담검사기록" 탭은 이름만 바꿔서 기록 유지', () => {
+  const { env, c, k } = fresh();
+  c.api_saveVisit(k, '엄마', { kind: '검사', date: '2026-10-20', testName: 'MRI' });
+  env.sheets['상담진료기록'].setName('상담검사기록');      // 지난 버전으로 쓰던 상태
+  const list = c.api_visits(k);
+  assert.strictEqual(list[0].testName, 'MRI');
+  assert.ok(env.sheets['상담진료기록'] && !env.sheets['상담검사기록']);
+});
+
+test('상담대비 기록: 직접 적은 지속 시간 저장', () => {
+  const { env, c, k } = fresh();
+  c.api_saveSeizure(k, '엄마', { date: '2026-10-24', time: '10:00', duration: '2시간 넘게 멍하게 있었음 (중간에 잠듦)', type: '멍해짐' });
+  assert.strictEqual(env.sheets['상담대비기록'].rows[1][3], '2시간 넘게 멍하게 있었음 (중간에 잠듦)'.slice(0, 30));
 });
 
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));

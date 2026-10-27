@@ -1,5 +1,5 @@
 /**
- * 우리집 복약·상담대비·상담검사 기록 (Google Apps Script 웹앱)
+ * 우리집 복약·상담대비·상담진료 기록 (Google Apps Script 웹앱)
  *
  * 데이터는 이 스크립트가 붙어 있는 구글 스프레드시트에 저장된다.
  * 접속은 비밀 키(APP_KEY) 방식: 가족 주소(웹앱 URL?k=키)를 한 번 열면 그 폰에 키가 저장된다.
@@ -30,17 +30,18 @@ const SHEETS = {
     headers: ['기록ID', '날짜', '시작시각', '지속시간', '종류', '상황', '전조증상', '당시복약', '메모', '기록자', '저장시각'],
   },
   VISITS: {
-    name: '상담검사기록',
+    name: '상담진료기록',
+    oldNames: ['상담검사기록'],
     headers: ['기록ID', '구분', '날짜', '담당선생님', '상담시간', '상담내용', '검사내용', '검사결과', '기록자', '저장시각', '수정시각'],
   },
 };
 
-// 상담·검사 탭의 구분. 검사는 검사내용·검사결과를, 나머지는 담당선생님·상담시간·상담내용을 쓴다.
+// 상담 진료 탭의 구분. 검사는 검사내용·검사결과를, 나머지는 담당선생님·상담시간·상담내용을 쓴다.
 const VISIT_KINDS = ['상담센터', '병원 상담', '검사'];
 const VISIT_TEST = '검사';
 
 // index.html의 CLIENT_VERSION과 같아야 한다. 둘이 다르면 화면에 "파일 버전이 달라요" 안내가 뜬다.
-const APP_VERSION = '7';
+const APP_VERSION = '8';
 
 const KIND_SCHEDULED = '정해진시간';
 const KIND_PRN = '필요시';
@@ -213,7 +214,7 @@ function api_saveSeizure(key, who, d) {
   const time = isHM_(d.time) ? d.time : nowHM_();
   withLock_(() => {
     appendRow_(SHEETS.SEIZURES, {
-      '기록ID': newId_('S'), '날짜': date, '시작시각': time, '지속시간': clip(d.duration, 20),
+      '기록ID': newId_('S'), '날짜': date, '시작시각': time, '지속시간': clip(d.duration, 30),
       '종류': clip(d.type, 30), '상황': clip(d.situation, 30),
       '전조증상': (Array.isArray(d.aura) ? d.aura : []).map((x) => clip(x, 30)).join(', '),
       '당시복약': clip(d.medState, 20), '메모': clip(d.memo, 500), '기록자': who, '저장시각': stamp_(),
@@ -222,9 +223,9 @@ function api_saveSeizure(key, who, d) {
   return { status: 'ok' };
 }
 
-// ───────────────────────── 상담·검사 기록 ─────────────────────────
+// ───────────────────────── 상담 진료 기록 ─────────────────────────
 
-/** 상담·검사 기록 전체 (최근 날짜가 먼저) */
+/** 상담 진료 기록 전체 (최근 날짜가 먼저) */
 function api_visits(key) {
   auth_(key);
   return visitList_();

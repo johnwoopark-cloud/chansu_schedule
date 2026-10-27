@@ -114,11 +114,11 @@ nav.tabs button.on{color:var(--blue);font-weight:700}
 var URL_KEY = <?!= jsonForHtml_(urlKey) ?>;
 var APP_URL = <?!= jsonForHtml_(appUrl) ?>;
 // Code.gs의 APP_VERSION과 같아야 한다
-var CLIENT_VERSION = '7';
+var CLIENT_VERSION = '8';
 // 상담대비 기록 탭 켜기/끄기. 숨기려면 false로 바꾸고 새 버전으로 배포 (기존 기록은 시트에 그대로 있음)
 var SHOW_SEIZURE = true;
 
-var DUR = ['10분 이상', '30분 이상', '1시간 이상'];
+var DUR = ['1분', '5분', '10분 이상', '30분 이상', '1시간 이상', '기타'];
 var SZ_TYPES = ['전신 떨림', '부분 떨림', '멍해짐', '기타'];
 var SZ_SITS = ['수면 중', '기상 직후', '잠들기 전', '공부 중', '게임 중', '핸드폰 중', '일상생활 중', '기타'];
 var SZ_AURA = ['이상한 냄새', '이상한 소리', '쓴맛', '기시감', '공포감', '복부 압박감', '없음/모름'];
@@ -265,7 +265,7 @@ function renderGate() {
 }
 
 function renderMain() {
-  var titles = { today: S.day ? '지난 복약 기록' : '오늘의 약', seizure: '상담대비 기록', visit: '상담·검사', cal: '기록 달력' };
+  var titles = { today: S.day ? '지난 복약 기록' : '오늘의 약', seizure: '상담대비 기록', visit: '상담 진료', cal: '기록 달력' };
   var d = S.data;
   var h = '<div class="app"><header class="top"><div class="ttl"><span class="date">' + esc(d ? d.dateLabel : '') + '</span><h1>' + titles[S.tab] + '</h1></div>' +
     '<div class="who" role="group" aria-label="지금 기록하는 사람">' +
@@ -286,7 +286,7 @@ function renderMain() {
   else if (S.tab === 'visit') h += renderVisits();
   else h += renderCalendar();
   h += '</main><nav class="tabs" aria-label="화면 이동"><div class="in">' +
-    tabBtn('today', ICON.pill, '오늘') + (SHOW_SEIZURE ? tabBtn('seizure', ICON.pen, '상담대비 기록') : '') + tabBtn('visit', ICON.clip, '상담·검사') + tabBtn('cal', ICON.cal, '달력') + '</div></nav></div>';
+    tabBtn('today', ICON.pill, '오늘') + (SHOW_SEIZURE ? tabBtn('seizure', ICON.pen, '상담대비 기록') : '') + tabBtn('visit', ICON.clip, '상담 진료') + tabBtn('cal', ICON.cal, '달력') + '</div></nav></div>';
   if (S.sheet === 'addMed') h += renderAddMed();
   if (S.sheet === 'settings') h += renderSettings();
   if (S.sheet === 'visit') h += renderVisitForm();
@@ -375,13 +375,15 @@ function renderToday(d) {
 }
 
 function newSz() {
-  return { date: todayYMD(), time: nowHM(), duration: '', type: '', situation: '', aura: [], medState: '', memo: '' };
+  return { date: todayYMD(), time: nowHM(), duration: '', durationEtc: '', type: '', situation: '', aura: [], medState: '', memo: '' };
 }
 function renderSeizure() {
   var z = S.sz || (S.sz = newSz());
   var h = '<div class="card"><div class="grid2"><div class="field"><label class="lbl" for="szDate">날짜</label><input id="szDate" type="date" value="' + esc(z.date) + '" data-in="sz.date"></div>' +
     '<div class="field"><label class="lbl" for="szTime">시작 시각</label><input id="szTime" type="time" value="' + esc(z.time) + '" data-in="sz.time"></div></div></div>';
-  h += '<div class="card"><div class="between"><span class="h2">지속 시간</span><span class="sub">하나 선택</span></div><div class="chips">' + DUR.map(function (x) { return chip(x, z.duration === x, 'szOne', 'duration|' + x); }).join('') + '</div></div>';
+  h += '<div class="card"><div class="between"><span class="h2">지속 시간</span><span class="sub">하나 선택</span></div><div class="chips">' + DUR.map(function (x) { return chip(x, z.duration === x, 'szOne', 'duration|' + x); }).join('') + '</div>' +
+    (z.duration === '기타' ? '<div class="field"><label class="lbl" for="szDurEtc">지속 시간 직접 입력</label><input id="szDurEtc" value="' + esc(z.durationEtc) + '" placeholder="예: 3분, 2시간 정도" maxlength="30" data-in="sz.durationEtc"></div>' : '') +
+    '</div>';
   h += group('종류', '하나 선택', SZ_TYPES, function (x) { return z.type === x; }, 'type');
   h += group('발생 상황', '하나 선택', SZ_SITS, function (x) { return z.situation === x; }, 'situation');
   h += '<div class="card"><div class="between"><span class="h2">전조 증상</span><span class="sub">여러 개 선택</span></div><div class="chips">' +
@@ -468,7 +470,7 @@ function renderAddMed() {
   return h;
 }
 
-// ───── 상담·검사 ─────
+// ───── 상담 진료 ─────
 var VISIT_KINDS = ['상담센터', '병원 상담', '검사'];
 function ymdLabel(ymd) {
   var p = String(ymd).split('-').map(Number);
@@ -479,7 +481,7 @@ function kindBadge(k) {
   return '<span class="badge' + (k === '검사' ? ' test' : k === '병원 상담' ? ' hosp' : '') + '">' + esc(k) + '</span>';
 }
 function renderVisits() {
-  var h = '<button class="btn wide" data-act="openVisit" data-v="">+ 상담·검사 기록 추가</button>' +
+  var h = '<button class="btn wide" data-act="openVisit" data-v="">+ 상담 진료 기록 추가</button>' +
     '<div class="chips">' + ['전체'].concat(VISIT_KINDS).map(function (k) { return chip(k, S.vfilter === k, 'vfilter'); }).join('') + '</div>';
   if (!S.visits) return h + '<div class="card"><div class="spinner" aria-label="불러오는 중"></div></div>';
   var list = S.visits.filter(function (v) { return S.vfilter === '전체' || v.kind === S.vfilter; });
@@ -508,7 +510,7 @@ function renderVisitForm() {
   var f = S.vform, isTest = f.kind === '검사';
   var teachers = [];
   (S.visits || []).forEach(function (v) { if (v.kind === f.kind && v.teacher && teachers.indexOf(v.teacher) < 0) teachers.push(v.teacher); });
-  var title = f.id ? '기록 수정' : '상담·검사 기록';
+  var title = f.id ? '기록 수정' : '상담 진료 기록';
   var h = '<div class="overlay" data-act="closeSheet" data-self="1"><div class="sheet" role="dialog" aria-label="' + title + '">' +
     '<div class="between" style="align-items:center"><span style="font-size:18px;font-weight:800">' + title + '</span><button class="btn ghost" data-act="closeSheet">닫기</button></div>' +
     '<div style="display:flex;flex-direction:column;gap:8px"><span class="lbl">구분</span><div class="chips" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr))">' +
@@ -673,7 +675,9 @@ var ACTIONS = {
   saveSz: function () {
     var z = S.sz;
     if (!z.type) { toast('종류를 골라 주세요'); return; }
-    act('api_saveSeizure', S.who, z).then(function (res) {
+    // 기타를 고르고 직접 적었으면 적은 내용을 지속 시간으로 저장
+    var send = Object.assign({}, z, { duration: z.duration === '기타' && z.durationEtc.trim() ? z.durationEtc.trim() : z.duration });
+    act('api_saveSeizure', S.who, send).then(function (res) {
       if (!res) return;
       S.sz = null; S.tab = 'today'; S.monthData = null; refresh();
       toast('상담대비 기록을 저장했어요 · 가족 화면 달력에도 보여요');
