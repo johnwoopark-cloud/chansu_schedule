@@ -17,13 +17,13 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   const APP_URL = 'http://localhost:PORT/';
 
   const tpl = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  assert.ok(tpl.includes('var SHOW_SEIZURE = false;'), '기본값은 경련 기록 꺼짐');
-  let showSeizure = true; // 기능 자체는 켜서 검사하고, 마지막에 기본값(꺼짐)을 따로 확인
+  assert.ok(tpl.includes('var SHOW_SEIZURE = true;'), '기본값은 상담대비 기록 켜짐');
+  let showSeizure = true; // 켜진 상태로 검사하고, 마지막에 껐을 때를 따로 확인
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, 'http://x');
     const k = (u.searchParams.get('k') || '').replace(/[^A-Za-z0-9]/g, '');
     const html = tpl
-      .replace('var SHOW_SEIZURE = false;', 'var SHOW_SEIZURE = ' + showSeizure + ';')
+      .replace('var SHOW_SEIZURE = true;', 'var SHOW_SEIZURE = ' + showSeizure + ';')
       .replace('<?!= jsonForHtml_(urlKey) ?>', JSON.stringify(k))
       .replace('<?!= jsonForHtml_(appUrl) ?>', JSON.stringify(APP_URL.replace('PORT', server.address().port)))
       .replace('<head>', '<head><script>window.google={script:{get run(){return makeRun();}}};function makeRun(){var ok,fail;var p=new Proxy({},{get:function(t,n){if(n==="withSuccessHandler")return function(f){ok=f;return p;};if(n==="withFailureHandler")return function(f){fail=f;return p;};return function(){var a=[].slice.call(arguments);window.__gas(n,a).then(function(r){if(r&&r.__err)fail&&fail(new Error(r.__err));else ok&&ok(r);});};}});return p;}</script>');
@@ -182,7 +182,7 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   assert.doesNotMatch(await text(), /그래도 기록/);
   await snap('today');
 
-  // 8. 경련 기록
+  // 8. 상담대비 기록
   env.setNow(at('14:10'));
   await page.click('nav [data-v="seizure"]');
   await settle();
@@ -190,7 +190,8 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await page.fill('#szTime', '14:02');
   await page.click('[data-act="saveSz"]');
   await settle();
-  assert.match(await text(), /경련 종류를 골라 주세요/);
+  assert.match(await text(), /종류를 골라 주세요/);
+  assert.match(await text(), /상담대비 기록/);
   await page.click('[data-v="duration|2분"]');
   await page.click('[data-v="type|부분 경련"]');
   await page.click('[data-v="situation|일상생활 중"]');
@@ -200,10 +201,10 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await snap('seizure-form');
   await page.click('[data-act="saveSz"]');
   await settle();
-  assert.match(await text(), /경련 기록 저장/);
-  const szRow = env.sheets['경련기록'].getRange(2, 1, 1, 11).getDisplayValues()[0];
+  assert.match(await text(), /상담대비 기록 저장/);
+  const szRow = env.sheets['상담대비기록'].getRange(2, 1, 1, 11).getDisplayValues()[0];
   assert.deepStrictEqual(szRow.slice(1, 10), ['2026-10-24', '14:02', '2분', '부분 경련', '일상생활 중', '쓴맛', '제때 복용', '금방 회복, 잘 놀고 있음', '아이']);
-  assert.ok(env.fetches.some((f) => f.body.title === '경련 기록이 추가됐어요'));
+  assert.ok(env.fetches.some((f) => f.body.title === '상담대비 기록이 추가됐어요'));
 
   // 9. 달력
   await page.click('nav [data-v="cal"]');
@@ -212,10 +213,63 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await settle();
   t = await text();
   assert.match(t, /10월 24일 기록/);
-  assert.match(t, /경련 14:02 · 2분/);
+  assert.match(t, /상담대비 기록 14:02 · 2분/);
   assert.match(t, /두통약 필요 시 · 두통/);
-  assert.match(t, /이번 달 경련\s*1회/);
+  assert.match(t, /상담대비 기록\s*1회/);
+  assert.match(t, /필요 시 복용\s*2회/);
+  assert.match(t, /이 날 복약 기록하기/);
   await snap('calendar');
+
+  // 9-0. 지난 날짜 복약 기록: 다음 날 아침에 어제 저녁 약을 기록
+  env.setNow(at('09:00', '2026-10-25'));
+  await page.click('nav [data-v="today"]');
+  await settle();
+  t = await text();
+  assert.match(t, /오늘\n10월 25일 일요일/);
+  assert.strictEqual(await page.locator('[data-act="dayShift"][data-v="1"]').isDisabled(), true, '미래로는 못 감');
+  await page.click('[data-act="dayShift"][data-v="-1"]');
+  await settle();
+  t = await text();
+  assert.match(t, /지난 복약 기록/);
+  assert.match(t, /어제\n10월 24일 토요일/);
+  assert.match(t, /어제 먹은 약 기록하기/);
+  assert.doesNotMatch(t, /필요할 때 먹는 약|복용 중인 약/, '지난 날짜엔 정해진 시간 약만');
+  assert.match(t, /20:00\n0 \/ 2 완료/);
+  await page.click('button[data-act="who"][data-v="엄마"]');
+  await page.click(`[data-act="dose"][data-v="${kep.id}|20:00"]`);
+  await settle();
+  t = await text();
+  assert.match(t, /어제 20:00 케프라액 기록됨/);
+  assert.match(t, /엄마 · 20:00 기록/);
+  const late = env.sheets['복약기록'].rows.filter((r) => r[1] === '2026-10-24' && r[2] === '20:00');
+  assert.strictEqual(late.length, 1);
+  assert.strictEqual(late[0][9], '나중에 기록');
+  await snap('yesterday');
+  // 같은 걸 또 누르면 경고, 취소도 그 날짜 기준
+  await page.click(`[data-act="dose"][data-v="${kep.id}|20:00"]`);
+  assert.match(await text(), /이미 엄마가 20:00에/);
+  await page.click('[data-act="undo"]');
+  await settle();
+  assert.match(await text(), /20:00\n0 \/ 2 완료/);
+  assert.strictEqual(env.sheets['복약기록'].rows.filter((r) => r[1] === '2026-10-24' && r[2] === '20:00').length, 0);
+  // 7일 전까지만
+  for (let i = 0; i < 6; i++) { await page.click('[data-act="dayShift"][data-v="-1"]'); await settle(); }
+  assert.match(await text(), /7일 전/);
+  assert.strictEqual(await page.locator('[data-act="dayShift"][data-v="-1"]').isDisabled(), true);
+  await page.click('[data-act="gotoDay"]');
+  await settle();
+  assert.match(await text(), /오늘의 약/);
+  // 달력에서 날짜를 골라 바로 기록하러 가기
+  await page.click('nav [data-v="cal"]');
+  await page.waitForSelector('.cal');
+  await page.click('.cal button[data-v="2026-10-23"]');
+  await settle();
+  await page.click('[data-act="gotoDay"][data-v="2026-10-23"]');
+  await settle();
+  assert.match(await text(), /그제 먹은 약 기록하기/);
+  await page.click('nav [data-v="today"]');
+  await settle();
+  assert.match(await text(), /오늘의 약/, '탭을 누르면 오늘로');
 
   // 9-1. 복용 중단: 데파킨을 빼면 오늘 화면에서 사라지고 지난 기록은 남음
   await page.click('nav [data-v="today"]');
@@ -247,20 +301,20 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await page.reload();
   await settle();
 
-  // 9-3. 기본값(경련 기록 꺼짐): 탭·달력 표시·통계에서 빠지고 필요 시 복용 횟수가 보임
+  // 9-3. 상담대비 기록을 끄면: 탭·달력 표시·통계에서 빠짐
   showSeizure = false;
   await page.reload();
   await settle();
   t = await text();
-  assert.doesNotMatch(t, /경련/);
+  assert.doesNotMatch(t, /상담/);
   assert.strictEqual(await page.locator('nav.tabs button').count(), 2);
   await page.click('nav [data-v="cal"]');
   await page.waitForSelector('.cal');
   await page.click('.cal button[data-v="2026-10-24"]');
   await settle();
   t = await text();
-  assert.doesNotMatch(t, /경련/);
-  assert.match(t, /이번 달 필요 시 복용\s*2회/);
+  assert.doesNotMatch(t, /상담/);
+  assert.match(t, /필요 시 복용\s*2회/);
   assert.match(t, /두통약 필요 시 · 두통/);
   await snap('no-seizure-calendar');
   await page.click('nav [data-v="today"]');

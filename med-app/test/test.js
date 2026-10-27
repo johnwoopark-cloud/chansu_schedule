@@ -26,7 +26,7 @@ function fresh() {
 test('setup: 시트, 비밀 키, 토픽, 트리거', () => {
   const env = createEnv({ now: at('07:00') });
   env.ctx.setup();
-  deq(Object.keys(env.sheets).sort(), ['경련기록', '복약기록', '약목록'].sort());
+  deq(Object.keys(env.sheets).sort(), ['상담대비기록', '복약기록', '약목록'].sort());
   assert.match(env.props.APP_KEY, /^[A-Za-z0-9]{24}$/);
   assert.match(env.props.NTFY_TOPIC, /^fam-med-[a-z0-9]{12}$/);
   assert.strictEqual(env.triggers.length, 1);
@@ -178,10 +178,10 @@ test('경련 기록 저장과 가족 알림', () => {
   const { env, c, k } = fresh();
   env.setNow(at('14:12'));
   c.api_saveSeizure(k, '아이', { date: '2026-10-24', time: '14:05', duration: '1분', type: '부분 경련', situation: '일상생활 중', aura: ['쓴맛', '공포감'], medState: '제때 복용', memo: '금방 회복' });
-  const row = env.sheets['경련기록'].getRange(2, 1, 1, 11).getDisplayValues()[0];
+  const row = env.sheets['상담대비기록'].getRange(2, 1, 1, 11).getDisplayValues()[0];
   deq(row.slice(1, 10), ['2026-10-24', '14:05', '1분', '부분 경련', '일상생활 중', '쓴맛, 공포감', '제때 복용', '금방 회복', '아이']);
   const n = env.fetches[env.fetches.length - 1].body;
-  assert.strictEqual(n.title, '경련 기록이 추가됐어요');
+  assert.strictEqual(n.title, '상담대비 기록이 추가됐어요');
   assert.doesNotMatch(n.message, /부분|쓴맛|금방/, '알림에 상세 건강정보 없음');
 });
 
@@ -189,7 +189,7 @@ test('경련 기록: 이상한 날짜·시각은 지금으로', () => {
   const { env, c, k } = fresh();
   env.setNow(at('14:12'));
   c.api_saveSeizure(k, '엄마', { date: 'x', time: '99:99', type: '기타' });
-  const row = env.sheets['경련기록'].getRange(2, 1, 1, 3).getDisplayValues()[0];
+  const row = env.sheets['상담대비기록'].getRange(2, 1, 1, 3).getDisplayValues()[0];
   deq(row.slice(1), ['2026-10-24', '14:12']);
 });
 
@@ -282,6 +282,72 @@ test('복용 중단: 목록·알림에서 빠지고 기록은 남음', () => {
   assert.strictEqual(env.fetches.length, 0, '중단한 약은 알림 없음');
   assert.throws(() => c.api_takeDose(k, '엄마', sched.id, '20:00'), /찾을 수 없어요/);
   assert.throws(() => c.api_stopMed(k, sched.id), /찾을 수 없어요/);
+});
+
+test('어제 저녁 약을 나중에 기록', () => {
+  const { env, c, k, sched } = fresh();             // 10-24 07:00에 약 등록 (시작일 10-24)
+  env.setNow(at('09:00', '2026-10-25'));
+  const r = c.api_takeDose(k, '엄마', sched.id, '20:00', '2026-10-24');
+  assert.strictEqual(r.status, 'ok');
+  assert.strictEqual(r.state.date, '2026-10-24');
+  assert.strictEqual(r.state.isToday, false);
+  deq(r.state.taken[sched.id + '|20:00'], { by: '엄마', at: '20:00' });
+  const row = env.sheets['복약기록'].rows[1];
+  assert.strictEqual(row[1], '2026-10-24');
+  assert.strictEqual(row[9], '나중에 기록');
+  assert.strictEqual(row[10], '2026-10-25 09:00:00', '저장시각은 실제로 누른 때');
+  assert.strictEqual(r.state.meds.find((m) => m.id === sched.id).stock, 41.5, '재고도 차감');
+  // 같은 회차 다시 → 중복
+  assert.strictEqual(c.api_takeDose(k, '아빠', sched.id, '20:00', '2026-10-24').status, 'dup');
+  // 오늘 화면에는 영향 없음
+  assert.strictEqual(c.api_today(k).taken[sched.id + '|20:00'], undefined);
+  // 지난 날짜 기록 취소
+  const u = c.api_undoDose(k, sched.id, '20:00', '2026-10-24');
+  assert.strictEqual(u.state.taken[sched.id + '|20:00'], undefined);
+  assert.strictEqual(u.state.meds.find((m) => m.id === sched.id).stock, 42);
+});
+
+test('지난 날짜 범위: 7일 전까지만, 미래 불가', () => {
+  const { env, c, k, sched } = fresh();
+  env.setNow(at('09:00', '2026-10-31'));
+  assert.strictEqual(c.api_takeDose(k, '엄마', sched.id, '08:00', '2026-10-24').status, 'ok', '정확히 7일 전 허용');
+  assert.throws(() => c.api_takeDose(k, '엄마', sched.id, '08:00', '2026-10-23'), /7일/);
+  assert.throws(() => c.api_takeDose(k, '엄마', sched.id, '08:00', '2026-11-01'), /7일/);
+  assert.throws(() => c.api_today(k, 'yesterday'), /7일/);
+  assert.strictEqual(c.api_today(k, '').date, '2026-10-31');
+  assert.strictEqual(c.api_today(k).minDate, '2026-10-24');
+});
+
+test('약 등록 전 날짜에 기록하면 시작일을 당겨 달력에도 보임', () => {
+  const { env, c, k, sched } = fresh();               // 시작일 10-24
+  env.setNow(at('09:00', '2026-10-24'));
+  const past = c.api_today(k, '2026-10-23');
+  assert.ok(past.meds.some((m) => m.id === sched.id), '지난 날짜 화면에도 지금 약이 보임');
+  c.api_takeDose(k, '엄마', sched.id, '20:00', '2026-10-23');
+  const row = env.sheets['약목록'].rows.find((x) => x[0] === sched.id);
+  assert.strictEqual(row[10], '2026-10-23');
+  const m = c.api_month(k, 2026, 10);
+  deq(m.days[22].slots.map((x) => x.done), [false, true]);
+});
+
+test('예전 "경련기록" 탭은 이름만 바꿔서 기록 유지', () => {
+  const env = createEnv({ now: at('07:00') });
+  const ss = env.ctx.SpreadsheetApp.getActiveSpreadsheet();
+  const old = ss.insertSheet('경련기록');
+  old.getRange(1, 1, 2, 3).setValues([['기록ID', '날짜', '시작시각'], ['S1', '2026-10-20', '10:00']]);
+  env.ctx.setup();
+  assert.ok(!env.sheets['경련기록'], '예전 탭 이름 없어짐');
+  assert.strictEqual(env.sheets['상담대비기록'], old, '같은 탭을 그대로 사용');
+  assert.strictEqual(old.rows[1][0], 'S1', '기존 기록 유지');
+  assert.strictEqual(Object.keys(env.sheets).length, 3, '새 탭을 따로 만들지 않음');
+});
+
+test('setup 없이도 예전 탭을 찾아 이름을 바꿈', () => {
+  const { env, c, k } = fresh();
+  env.sheets['상담대비기록'].setName('경련기록');
+  c.api_saveSeizure(k, '엄마', { date: '2026-10-24', time: '10:00', type: '기타' });
+  assert.ok(env.sheets['상담대비기록'] && !env.sheets['경련기록']);
+  assert.strictEqual(env.sheets['상담대비기록'].getLastRow(), 2);
 });
 
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));

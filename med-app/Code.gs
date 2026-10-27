@@ -1,5 +1,5 @@
 /**
- * 우리집 복약·경련 기록 (Google Apps Script 웹앱)
+ * 우리집 복약·상담대비 기록 (Google Apps Script 웹앱)
  *
  * 데이터는 이 스크립트가 붙어 있는 구글 스프레드시트에 저장된다.
  * 접속은 비밀 키(APP_KEY) 방식: 가족 주소(웹앱 URL?k=키)를 한 번 열면 그 폰에 키가 저장된다.
@@ -11,6 +11,7 @@
 const CONFIG = {
   PEOPLE: ['엄마', '아빠', '아이'],
   PRN_REASONS: ['두통', '발열', '기타'],
+  PAST_DAYS: 7,                 // 며칠 전 복약까지 나중에 기록할 수 있는지
   REMIND_AFTER_MIN: [30, 60],   // 복약 예정 시각 이후 1차·2차 알림 (분)
   REMIND_WINDOW_MIN: 240,       // 예정 시각에서 이만큼 지나면 더 이상 독촉하지 않음 (분)
   QUIET_START_HOUR: 23,         // 이 시각부터
@@ -30,13 +31,14 @@ const SHEETS = {
     headers: ['기록ID', '날짜', '예정시각', '실제시각', '약ID', '약이름', '1회용량', '기록자', '구분', '이유', '저장시각'],
   },
   SEIZURES: {
-    name: '경련기록',
+    name: '상담대비기록',
+    oldNames: ['경련기록'],  // 예전 이름의 탭이 있으면 자동으로 이름을 바꿔 그대로 쓴다
     headers: ['기록ID', '날짜', '시작시각', '지속시간', '종류', '상황', '전조증상', '당시복약', '메모', '기록자', '저장시각'],
   },
 };
 
 // index.html의 CLIENT_VERSION과 같아야 한다. 둘이 다르면 화면에 "파일 버전이 달라요" 안내가 뜬다.
-const APP_VERSION = '3';
+const APP_VERSION = '4';
 
 const KIND_SCHEDULED = '정해진시간';
 const KIND_PRN = '필요시';
@@ -69,49 +71,54 @@ function api_checkKey(key) {
   return { ok: isValidKey_(key), people: CONFIG.PEOPLE, version: APP_VERSION };
 }
 
-function api_today(key) {
+/** date를 주면 그날(최근 7일 이내) 화면, 안 주면 오늘 화면 */
+function api_today(key, date) {
   auth_(key);
-  return todayState_();
+  return todayState_(dayOrToday_(date));
 }
 
-function api_takeDose(key, who, medId, slot) {
+/** 정해진 시간 약 복용 기록. date를 주면 지난 날짜(최근 7일)에 나중에 기록한다. */
+function api_takeDose(key, who, medId, slot, date) {
   auth_(key);
   who = checkWho_(who);
+  const day = dayOrToday_(date);
   return withLock_(() => {
     const med = findMed_(medId);
     if (!med || med.kind !== KIND_SCHEDULED || med.times.indexOf(slot) < 0) throw new Error('약 정보를 찾을 수 없어요. 새로고침 해 주세요.');
-    const today = today_();
+    const isToday = day === today_();
     const existing = readTable_(SHEETS.DOSES).find((r) =>
-      r['날짜'] === today && r['약ID'] === medId && r['예정시각'] === slot && r['구분'] === KIND_SCHEDULED);
+      r['날짜'] === day && r['약ID'] === medId && r['예정시각'] === slot && r['구분'] === KIND_SCHEDULED);
     if (existing) {
-      return { status: 'dup', by: existing['기록자'], at: existing['실제시각'], state: todayState_() };
+      return { status: 'dup', by: existing['기록자'], at: existing['실제시각'], state: todayState_(day) };
     }
     appendRow_(SHEETS.DOSES, {
-      '기록ID': newId_('D'), '날짜': today, '예정시각': slot, '실제시각': nowHM_(),
+      '기록ID': newId_('D'), '날짜': day, '예정시각': slot, '실제시각': isToday ? nowHM_() : slot,
       '약ID': med.id, '약이름': med.name, '1회용량': med.dose, '기록자': who,
-      '구분': KIND_SCHEDULED, '이유': '', '저장시각': stamp_(),
+      '구분': KIND_SCHEDULED, '이유': isToday ? '' : '나중에 기록', '저장시각': stamp_(),
     });
     changeStock_(med, -med.per);
-    return { status: 'ok', state: todayState_() };
+    // 약을 등록하기 전 날짜에 기록하면, 달력에서도 보이도록 시작일을 그날로 당긴다
+    if (med.start > day) updateRow_(SHEETS.MEDS, med._row, { '시작일': day });
+    return { status: 'ok', state: todayState_(day) };
   });
 }
 
-function api_undoDose(key, medId, slot) {
+function api_undoDose(key, medId, slot, date) {
   auth_(key);
+  const day = dayOrToday_(date);
   return withLock_(() => {
-    const today = today_();
     const sheet = sheet_(SHEETS.DOSES);
     const rows = readTable_(SHEETS.DOSES);
     for (let i = rows.length - 1; i >= 0; i--) {
       const r = rows[i];
-      if (r['날짜'] === today && r['약ID'] === medId && r['예정시각'] === slot && r['구분'] === KIND_SCHEDULED) {
+      if (r['날짜'] === day && r['약ID'] === medId && r['예정시각'] === slot && r['구분'] === KIND_SCHEDULED) {
         sheet.deleteRow(r._row);
         const med = findMed_(medId);
         if (med) changeStock_(med, med.per);
         break;
       }
     }
-    return { status: 'ok', state: todayState_() };
+    return { status: 'ok', state: todayState_(day) };
   });
 }
 
@@ -210,7 +217,7 @@ function api_saveSeizure(key, who, d) {
       '당시복약': clip(d.medState, 20), '메모': clip(d.memo, 500), '기록자': who, '저장시각': stamp_(),
     });
   });
-  sendNtfy_('경련 기록이 추가됐어요', who + '님이 ' + date.slice(5).replace('-', '/') + ' ' + time + ' 경련을 기록했어요.', { priority: 4, tags: ['memo'] });
+  sendNtfy_('상담대비 기록이 추가됐어요', who + '님이 ' + date.slice(5).replace('-', '/') + ' ' + time + ' 상담대비 기록을 남겼어요.', { priority: 4, tags: ['memo'] });
   return { status: 'ok' };
 }
 
@@ -271,11 +278,13 @@ function api_month(key, year, month) {
 
 // ───────────────────────── 오늘 화면 데이터 ─────────────────────────
 
-function todayState_() {
+/** 하루 화면 데이터. day를 안 주면 오늘. 지난 날짜에도 지금 먹는 약을 모두 보여 줘서 나중에 기록할 수 있게 한다. */
+function todayState_(day) {
   const today = today_();
-  const meds = readMeds_().filter((m) => m.active && m.start <= today);
+  day = day || today;
+  const meds = readMeds_().filter((m) => m.active);
   const rows = readTable_(SHEETS.DOSES);
-  const todays = rows.filter((r) => r['날짜'] === today);
+  const todays = rows.filter((r) => r['날짜'] === day);
   const taken = {};
   todays.filter((r) => r['구분'] === KIND_SCHEDULED).forEach((r) => {
     taken[r['약ID'] + '|' + r['예정시각']] = { by: r['기록자'], at: r['실제시각'] };
@@ -283,8 +292,11 @@ function todayState_() {
   const prnToday = todays.filter((r) => r['구분'] === KIND_PRN)
     .map((r) => ({ medId: r['약ID'], by: r['기록자'], at: r['실제시각'], reason: r['이유'] }));
   return {
-    date: today,
-    dateLabel: dateLabel_(today),
+    date: day,
+    dateLabel: dateLabel_(day),
+    isToday: day === today,
+    today: today,
+    minDate: addDays_(today, -CONFIG.PAST_DAYS),
     now: nowHM_(),
     people: CONFIG.PEOPLE,
     reasons: CONFIG.PRN_REASONS,
@@ -378,7 +390,7 @@ function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   Object.keys(SHEETS).forEach((k) => {
     const def = SHEETS[k];
-    let sh = ss.getSheetByName(def.name);
+    let sh = findSheet_(def);
     if (!sh) sh = ss.insertSheet(def.name);
     sh.getRange(1, 1, sh.getMaxRows(), def.headers.length).setNumberFormat('@');
     sh.getRange(1, 1, 1, def.headers.length).setValues([def.headers]).setFontWeight('bold').setBackground('#EEF1F5');
@@ -428,8 +440,21 @@ function testNtfy() {
 
 // ───────────────────────── 시트 읽기/쓰기 ─────────────────────────
 
+/** 시트를 찾는다. 예전 이름(oldNames)의 탭만 있으면 새 이름으로 바꿔서 쓴다. */
+function findSheet_(def) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(def.name);
+  if (sh) return sh;
+  (def.oldNames || []).some((n) => {
+    const old = ss.getSheetByName(n);
+    if (old) { old.setName(def.name); sh = old; }
+    return !!sh;
+  });
+  return sh;
+}
+
 function sheet_(def) {
-  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(def.name);
+  const sh = findSheet_(def);
   if (!sh) throw new Error('"' + def.name + '" 시트가 없어요. 관리자가 setup()을 실행해야 해요.');
   return sh;
 }
@@ -575,6 +600,23 @@ function dateLabel_(ymd) {
   const p = ymd.split('-').map(Number);
   const wd = '일월화수목금토'.charAt(new Date(p[0], p[1] - 1, p[2]).getDay());
   return p[1] + '월 ' + p[2] + '일 ' + wd + '요일';
+}
+
+/** 'yyyy-MM-dd'가 최근 PAST_DAYS일 ~ 오늘 사이면 그대로, 비었으면 오늘, 그 밖이면 오류 */
+function dayOrToday_(d) {
+  const today = today_();
+  if (d == null || d === '') return today;
+  d = String(d);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d > today || d < addDays_(today, -CONFIG.PAST_DAYS)) {
+    throw new Error('최근 ' + CONFIG.PAST_DAYS + '일 안의 날짜만 기록할 수 있어요.');
+  }
+  return d;
+}
+
+function addDays_(ymd, n) {
+  const p = ymd.split('-').map(Number);
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n));
+  return d.getUTCFullYear() + '-' + pad2_(d.getUTCMonth() + 1) + '-' + pad2_(d.getUTCDate());
 }
 
 function daysBetween_(a, b) {

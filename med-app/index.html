@@ -88,6 +88,10 @@ nav.tabs button.on{color:var(--blue);font-weight:700}
 .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:2px}
 .stat span{font-size:12px;color:var(--muted)}
 .stat b{font-size:20px;font-weight:800}
+.daybar{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px}
+.daybar .lbl2{display:flex;flex-direction:column;align-items:center;gap:1px}
+.daybar .lbl2 b{font-size:16px}
+.navbtn:disabled{opacity:.35}
 .navbtn{border:1px solid var(--line);background:#fff;border-radius:10px;width:40px;height:40px;font-size:18px;color:var(--ink2)}
 .center{min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px 20px;gap:16px;max-width:480px;margin:0 auto}
 .center h1{margin:0;font-size:24px;font-weight:800}
@@ -104,9 +108,9 @@ nav.tabs button.on{color:var(--blue);font-weight:700}
 var URL_KEY = <?!= jsonForHtml_(urlKey) ?>;
 var APP_URL = <?!= jsonForHtml_(appUrl) ?>;
 // Code.gs의 APP_VERSION과 같아야 한다
-var CLIENT_VERSION = '3';
-// 경련 기록 기능 켜기/끄기. 다시 쓰려면 true로 바꾸고 새 버전으로 배포 (기존 기록은 시트에 그대로 있음)
-var SHOW_SEIZURE = false;
+var CLIENT_VERSION = '4';
+// 상담대비 기록 탭 켜기/끄기. 숨기려면 false로 바꾸고 새 버전으로 배포 (기존 기록은 시트에 그대로 있음)
+var SHOW_SEIZURE = true;
 
 var DUR = ['30초 미만', '1분', '2분', '5분', '10분 이상'];
 var SZ_TYPES = ['전신 경련', '부분 경련', '결신(멍해짐)', '기타'];
@@ -117,7 +121,7 @@ var TIME_CHOICES = ['07:00', '08:00', '09:00', '12:00', '13:00', '18:00', '19:00
 
 var S = {
   screen: 'loading', key: '', who: '', people: ['엄마', '아빠', '아이'], tab: 'today',
-  data: null, warn: null, pendingPrn: null, reason: '두통', busy: false, toast: '',
+  day: '', data: null, warn: null, pendingPrn: null, reason: '두통', busy: false, toast: '',
   sheet: null, form: null, sz: null, month: null, monthData: null, selDay: null, justRegistered: false
 };
 
@@ -180,7 +184,8 @@ function enterMain() {
   refresh();
 }
 function refresh() {
-  return call('api_today', S.key).then(function (d) { S.data = d; render(); }, function (e) { toast('불러오지 못했어요: ' + e.message, true); });
+  var want = S.day;
+  return call('api_today', S.key, want).then(function (d) { if (S.day === want) { S.data = d; render(); } }, function (e) { toast('불러오지 못했어요: ' + e.message, true); });
 }
 function logout(byServer) {
   store('key', null); store('who', null);
@@ -200,6 +205,15 @@ function chip(label, on, action, value) {
   return '<button class="chip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" data-act="' + action + '" data-v="' + esc(value == null ? label : value) + '">' + esc(label) + '</button>';
 }
 function pad(n) { return (n < 10 ? '0' : '') + n; }
+function shiftDay(ymd, n) {
+  var p = ymd.split('-').map(Number), d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n));
+  return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+}
+function relDay(ymd, today) {
+  var p = ymd.split('-').map(Number), q = today.split('-').map(Number);
+  var n = Math.round((Date.UTC(q[0], q[1] - 1, q[2]) - Date.UTC(p[0], p[1] - 1, p[2])) / 86400000);
+  return n === 0 ? '오늘' : n === 1 ? '어제' : n === 2 ? '그제' : n + '일 전';
+}
 function nowHM() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 function todayYMD() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
 function iGa(word) { var c = word.charCodeAt(word.length - 1); return (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28) ? '이' : '가'; }
@@ -243,7 +257,7 @@ function renderGate() {
 }
 
 function renderMain() {
-  var titles = { today: '오늘의 약', seizure: '경련 기록', cal: '기록 달력' };
+  var titles = { today: S.day ? '지난 복약 기록' : '오늘의 약', seizure: '상담대비 기록', cal: '기록 달력' };
   var d = S.data;
   var h = '<div class="app"><header class="top"><div class="ttl"><span class="date">' + esc(d ? d.dateLabel : '') + '</span><h1>' + titles[S.tab] + '</h1></div>' +
     '<div class="who" role="group" aria-label="지금 기록하는 사람">' +
@@ -263,7 +277,7 @@ function renderMain() {
   else if (S.tab === 'seizure' && SHOW_SEIZURE) h += renderSeizure();
   else h += renderCalendar();
   h += '</main><nav class="tabs" aria-label="화면 이동"><div class="in">' +
-    tabBtn('today', ICON.pill, '오늘') + (SHOW_SEIZURE ? tabBtn('seizure', ICON.pen, '경련 기록') : '') + tabBtn('cal', ICON.cal, '달력') + '</div></nav></div>';
+    tabBtn('today', ICON.pill, '오늘') + (SHOW_SEIZURE ? tabBtn('seizure', ICON.pen, '상담대비 기록') : '') + tabBtn('cal', ICON.cal, '달력') + '</div></nav></div>';
   if (S.sheet === 'addMed') h += renderAddMed();
   if (S.sheet === 'settings') h += renderSettings();
   return h;
@@ -283,8 +297,16 @@ function renderToday(d) {
     }
     h += '</div>';
   }
+  h += '<div class="daybar"><button class="navbtn" data-act="dayShift" data-v="-1" aria-label="전날"' + (d.date <= d.minDate ? ' disabled' : '') + '>‹</button>' +
+    '<div class="lbl2"><b>' + relDay(d.date, d.today) + '</b><span class="sub">' + esc(d.dateLabel) + '</span></div>' +
+    '<button class="navbtn" data-act="dayShift" data-v="1" aria-label="다음날"' + (d.isToday ? ' disabled' : '') + '>›</button></div>';
+  if (!d.isToday) {
+    h += '<div class="card" style="background:var(--blue-soft);border-color:#B9CBF5;gap:8px"><span class="h2">' + relDay(d.date, d.today) + ' 먹은 약 기록하기</span>' +
+      '<span class="sub" style="color:var(--ink2)">먹은 약에 [먹었어요]를 누르세요. 먹은 시각은 예정 시각으로 남아요.</span>' +
+      '<button class="btn ghost" style="align-self:flex-start" data-act="gotoDay" data-v="">오늘로 돌아가기</button></div>';
+  }
   var sched = d.meds.filter(function (m) { return !m.prn; });
-  var prn = d.meds.filter(function (m) { return m.prn; });
+  var prn = d.isToday ? d.meds.filter(function (m) { return m.prn; }) : [];
   var times = [];
   sched.forEach(function (m) { m.times.forEach(function (t) { if (times.indexOf(t) < 0) times.push(t); }); });
   times.sort();
@@ -323,6 +345,7 @@ function renderToday(d) {
     h += '</div>';
   }
 
+  if (!d.isToday) return h;
   h += '<div class="card"><div class="between" style="align-items:center"><span class="h2">복용 중인 약</span><button class="btn ghost" data-act="openAddMed">+ 약 추가</button></div>';
   d.meds.forEach(function (m) {
     var pct = 0, txt = '남은 양 미입력';
@@ -349,12 +372,12 @@ function renderSeizure() {
   var h = '<div class="card"><div class="grid2"><div class="field"><label class="lbl" for="szDate">날짜</label><input id="szDate" type="date" value="' + esc(z.date) + '" data-in="sz.date"></div>' +
     '<div class="field"><label class="lbl" for="szTime">시작 시각</label><input id="szTime" type="time" value="' + esc(z.time) + '" data-in="sz.time"></div></div></div>';
   h += '<div class="card"><span class="h2">지속 시간</span><div class="chips">' + DUR.map(function (x) { return chip(x, z.duration === x, 'szOne', 'duration|' + x); }).join('') + '</div></div>';
-  h += group('경련 종류', '하나 선택', SZ_TYPES, function (x) { return z.type === x; }, 'type');
+  h += group('종류', '하나 선택', SZ_TYPES, function (x) { return z.type === x; }, 'type');
   h += group('발생 상황', '하나 선택', SZ_SITS, function (x) { return z.situation === x; }, 'situation');
   h += '<div class="card"><div class="between"><span class="h2">전조 증상</span><span class="sub">여러 개 선택</span></div><div class="chips">' +
     SZ_AURA.map(function (x) { return chip(x, z.aura.indexOf(x) >= 0, 'szAura'); }).join('') + '</div></div>';
-  h += group('경련 당시 복약', '하나 선택', SZ_MED, function (x) { return z.medState === x; }, 'medState');
-  h += '<div class="card"><div class="field"><label class="lbl" for="szMemo">메모</label><textarea id="szMemo" placeholder="예: 경련 후 잘 먹고 기운 있음" data-in="sz.memo">' + esc(z.memo) + '</textarea></div></div>';
+  h += group('당시 복약', '하나 선택', SZ_MED, function (x) { return z.medState === x; }, 'medState');
+  h += '<div class="card"><div class="field"><label class="lbl" for="szMemo">메모</label><textarea id="szMemo" placeholder="예: 이후 잘 먹고 기운 있음" data-in="sz.memo">' + esc(z.memo) + '</textarea></div></div>';
   h += '<button class="btn wide" data-act="saveSz"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '저장하고 가족에게 알리기') + '</button>';
   return h;
 }
@@ -375,23 +398,21 @@ function renderCalendar() {
     var cls = (day.date === md.today ? ' today' : '') + (day.date === S.selDay ? ' sel' : '') + (day.future ? ' future' : '');
     h += '<button class="' + cls + '" data-act="day" data-v="' + day.date + '" aria-label="' + m.m + '월 ' + day.day + '일"><span>' + day.day + '</span><span class="dots">' +
       day.slots.map(function (s) { return '<span class="dot' + (s.done ? '' : ' miss') + '"></span>'; }).join('') + '</span>' +
-      (SHOW_SEIZURE && day.seizures.length ? '<span class="szmark">경련' + (day.seizures.length > 1 ? ' ' + day.seizures.length : '') + '</span>' : '') + '</button>';
+      (SHOW_SEIZURE && day.seizures.length ? '<span class="szmark">상담' + (day.seizures.length > 1 ? ' ' + day.seizures.length : '') + '</span>' : '') + '</button>';
   });
-  h += '</div><div class="legend"><span><span class="dot"></span>그 시간 약 모두 복용</span><span><span class="dot miss"></span>미기록</span>' + (SHOW_SEIZURE ? '<span><span class="szmark">경련</span>경련 기록</span>' : '') + '</div></div>';
+  h += '</div><div class="legend"><span><span class="dot"></span>그 시간 약 모두 복용</span><span><span class="dot miss"></span>미기록</span>' + (SHOW_SEIZURE ? '<span><span class="szmark">상담</span>상담대비 기록</span>' : '') + '</div></div>';
   var prnCount = 0;
   md.days.forEach(function (x) { x.doses.forEach(function (r) { if (r.prn) prnCount++; }); });
-  h += '<div class="stats"><div class="stat"><span>이번 달 복약률</span><b>' + (md.rate == null ? '-' : md.rate + '%') + '</b></div>' +
-    (SHOW_SEIZURE
-      ? '<div class="stat"><span>이번 달 경련</span><b>' + md.seizureCount + '회</b></div>' +
-        '<div class="stat"><span>무경련</span><b>' + (md.seizureFreeDays == null ? '-' : md.seizureFreeDays + '일째') + '</b></div>'
-      : '<div class="stat"><span>이번 달 필요 시 복용</span><b>' + prnCount + '회</b></div>') + '</div>';
+  h += '<div class="stats"><div class="stat"><span>복약률</span><b>' + (md.rate == null ? '-' : md.rate + '%') + '</b></div>' +
+    (SHOW_SEIZURE ? '<div class="stat"><span>상담대비 기록</span><b>' + md.seizureCount + '회</b></div>' : '') +
+    '<div class="stat"><span>필요 시 복용</span><b>' + prnCount + '회</b></div></div>';
   var sel = S.selDay && md.days.filter(function (x) { return x.date === S.selDay; })[0];
   if (sel) {
     h += '<div class="card"><span class="h2">' + m.m + '월 ' + sel.day + '일 기록</span>';
     var szs = SHOW_SEIZURE ? sel.seizures : [];
     if (!sel.doses.length && !szs.length) h += '<div class="empty">기록이 없어요</div>';
     szs.forEach(function (z) {
-      h += '<div class="row" style="align-items:flex-start"><div class="info"><span class="name" style="color:var(--orange)">경련 ' + esc(z.time) + ' · ' + esc(z.duration) + '</span>' +
+      h += '<div class="row" style="align-items:flex-start"><div class="info"><span class="name" style="color:var(--orange)">상담대비 기록 ' + esc(z.time) + ' · ' + esc(z.duration) + '</span>' +
         '<span class="sub">' + esc([z.type, z.situation, z.aura && ('전조: ' + z.aura), z.medState && ('복약: ' + z.medState)].filter(Boolean).join(' · ')) + '</span>' +
         (z.memo ? '<span class="sub" style="color:var(--ink2)">' + esc(z.memo) + '</span>' : '') + '<span class="sub">기록: ' + esc(z.by) + '</span></div></div>';
     });
@@ -399,9 +420,12 @@ function renderCalendar() {
       h += '<div class="row"><div class="info"><span class="name">' + esc(x.name) + ' <small>' + (x.prn ? '필요 시 · ' + esc(x.reason) : esc(x.slot) + ' 회차') + '</small></span>' +
         '<span class="sub">' + esc(x.by) + ' · ' + esc(x.at) + '</span></div></div>';
     });
+    if (S.data && !sel.future && sel.date >= S.data.minDate) {
+      h += '<button class="btn ghost" style="align-self:flex-start" data-act="gotoDay" data-v="' + sel.date + '">이 날 복약 기록하기</button>';
+    }
     h += '</div>';
   }
-  h += '<div class="sub" style="text-align:center">진료 때는 스프레드시트의 "복약기록"' + (SHOW_SEIZURE ? ', "경련기록"' : '') + ' 탭을 보여 주거나 인쇄하세요.</div>';
+  h += '<div class="sub" style="text-align:center">진료 때는 스프레드시트의 "복약기록"' + (SHOW_SEIZURE ? ', "상담대비기록"' : '') + ' 탭을 보여 주거나 인쇄하세요.</div>';
   return h;
 }
 
@@ -450,9 +474,20 @@ var ACTIONS = {
   who: function (v) { S.who = v; store('who', v); S.warn = null; S.pendingPrn = null; render(); },
   tab: function (v) {
     S.tab = v; S.warn = null; S.pendingPrn = null;
+    if (v === 'today') S.day = '';
     if (v === 'cal') loadMonth();
     if (v === 'today') refresh();
     render(); window.scrollTo(0, 0);
+  },
+  dayShift: function (v) {
+    var d = S.data, next = shiftDay(d.date, Number(v));
+    if (next > d.today || next < d.minDate) return;
+    S.day = next === d.today ? '' : next; S.warn = null; S.pendingPrn = null;
+    refresh(); window.scrollTo(0, 0);
+  },
+  gotoDay: function (v) {
+    S.day = S.data && v === S.data.today ? '' : v; S.tab = 'today'; S.warn = null; S.pendingPrn = null;
+    render(); refresh(); window.scrollTo(0, 0);
   },
   dismissReg: function () { S.justRegistered = false; render(); },
   openSettings: function () { S.sheet = 'settings'; render(); },
@@ -471,19 +506,20 @@ var ACTIONS = {
       render(); return;
     }
     S.warn = null;
-    act('api_takeDose', S.who, id, slot).then(function (res) {
+    var dayName = S.day ? relDay(S.data.date, S.data.today) + ' ' : '';
+    act('api_takeDose', S.who, id, slot, S.day).then(function (res) {
       if (!res) return;
       if (res.status === 'dup') {
         S.warn = { text: '방금 ' + res.by + iGa(res.by) + ' ' + res.at + '에 먼저 기록했어요. 두 번 먹지 않도록 확인하세요.', actions: [{ label: '확인', act: 'clearWarn', primary: true }] };
         render();
-      } else toast(slot + ' ' + med.name + ' 기록됨 · 가족 화면에도 보여요');
+      } else toast(dayName + slot + ' ' + med.name + ' 기록됨 · 가족 화면에도 보여요');
     });
   },
   undo: function (v) {
     var p = v.split('|');
     if (!confirm('이 기록을 취소할까요?')) return;
     S.warn = null;
-    act('api_undoDose', p[0], p[1]).then(function (res) { if (res) toast('기록을 취소했어요'); });
+    act('api_undoDose', p[0], p[1], S.day).then(function (res) { if (res) toast('기록을 취소했어요'); });
   },
   clearWarn: function () { S.warn = null; S.pendingPrn = null; render(); },
   prn: function (id) {
@@ -531,11 +567,11 @@ var ACTIONS = {
   szAura: function (v) { var a = S.sz.aura, i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); render(); },
   saveSz: function () {
     var z = S.sz;
-    if (!z.type) { toast('경련 종류를 골라 주세요'); return; }
+    if (!z.type) { toast('종류를 골라 주세요'); return; }
     act('api_saveSeizure', S.who, z).then(function (res) {
       if (!res) return;
       S.sz = null; S.tab = 'today'; S.monthData = null; refresh();
-      toast('경련 기록 저장 · 가족에게 알림을 보냈어요');
+      toast('상담대비 기록 저장 · 가족에게 알림을 보냈어요');
       window.scrollTo(0, 0);
     });
   },

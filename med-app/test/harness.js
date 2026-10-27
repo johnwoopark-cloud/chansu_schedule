@@ -67,7 +67,7 @@ function createEnv(opts = {}) {
   const triggers = [];
   const ss = {
     getSheetByName: (n) => sheets[n] || null,
-    insertSheet: (n) => (sheets[n] = new Sheet(n)),
+    insertSheet: (n) => { const sh = new Sheet(n); sh.setName = (nn) => { delete sheets[sh.name]; sh.name = nn; sheets[nn] = sh; }; return (sheets[n] = sh); },
   };
   const ctx = {
     console: { log: () => {}, warn: () => {}, error: console.error },
