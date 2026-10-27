@@ -38,7 +38,7 @@ const SHEETS = {
 };
 
 // index.html의 CLIENT_VERSION과 같아야 한다. 둘이 다르면 화면에 "파일 버전이 달라요" 안내가 뜬다.
-const APP_VERSION = '4';
+const APP_VERSION = '5';
 
 const KIND_SCHEDULED = '정해진시간';
 const KIND_PRN = '필요시';
@@ -217,8 +217,14 @@ function api_saveSeizure(key, who, d) {
       '당시복약': clip(d.medState, 20), '메모': clip(d.memo, 500), '기록자': who, '저장시각': stamp_(),
     });
   });
-  sendNtfy_('상담대비 기록이 추가됐어요', who + '님이 ' + date.slice(5).replace('-', '/') + ' ' + time + ' 상담대비 기록을 남겼어요.', { priority: 4, tags: ['memo'] });
-  return { status: 'ok' };
+  // 기록은 이미 저장됐으므로, 알림이 실패해도 오류로 돌려보내지 않는다 (다시 저장해서 중복되는 것 방지)
+  let notified = false;
+  try {
+    notified = sendNtfy_('상담대비 기록이 추가됐어요', who + '님이 ' + date.slice(5).replace('-', '/') + ' ' + time + ' 상담대비 기록을 남겼어요.', { priority: 4, tags: ['memo'] });
+  } catch (err) {
+    console.warn('ntfy 전송 오류: ' + err);
+  }
+  return { status: 'ok', notified: notified };
 }
 
 function api_month(key, year, month) {

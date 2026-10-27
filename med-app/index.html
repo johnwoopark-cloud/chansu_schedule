@@ -108,13 +108,13 @@ nav.tabs button.on{color:var(--blue);font-weight:700}
 var URL_KEY = <?!= jsonForHtml_(urlKey) ?>;
 var APP_URL = <?!= jsonForHtml_(appUrl) ?>;
 // Code.gs의 APP_VERSION과 같아야 한다
-var CLIENT_VERSION = '4';
+var CLIENT_VERSION = '5';
 // 상담대비 기록 탭 켜기/끄기. 숨기려면 false로 바꾸고 새 버전으로 배포 (기존 기록은 시트에 그대로 있음)
 var SHOW_SEIZURE = true;
 
-var DUR = ['30초 미만', '1분', '2분', '5분', '10분 이상'];
-var SZ_TYPES = ['전신 경련', '부분 경련', '결신(멍해짐)', '기타'];
-var SZ_SITS = ['수면 중', '기상 직후', '일상생활 중', '기타'];
+var DUR = ['10분 이상', '30분 이상', '1시간 이상'];
+var SZ_TYPES = ['전신 떨림', '부분 떨림', '멍해짐', '기타'];
+var SZ_SITS = ['수면 중', '기상 직후', '잠들기 전', '공부 중', '게임 중', '핸드폰 중', '일상생활 중', '기타'];
 var SZ_AURA = ['이상한 냄새', '이상한 소리', '쓴맛', '기시감', '공포감', '복부 압박감', '없음/모름'];
 var SZ_MED = ['제때 복용', '미복용', '늦게 복용'];
 var TIME_CHOICES = ['07:00', '08:00', '09:00', '12:00', '13:00', '18:00', '19:00', '20:00', '21:00', '22:00'];
@@ -365,13 +365,13 @@ function renderToday(d) {
 }
 
 function newSz() {
-  return { date: todayYMD(), time: nowHM(), duration: '1분', type: '', situation: '', aura: [], medState: '', memo: '' };
+  return { date: todayYMD(), time: nowHM(), duration: '', type: '', situation: '', aura: [], medState: '', memo: '' };
 }
 function renderSeizure() {
   var z = S.sz || (S.sz = newSz());
   var h = '<div class="card"><div class="grid2"><div class="field"><label class="lbl" for="szDate">날짜</label><input id="szDate" type="date" value="' + esc(z.date) + '" data-in="sz.date"></div>' +
     '<div class="field"><label class="lbl" for="szTime">시작 시각</label><input id="szTime" type="time" value="' + esc(z.time) + '" data-in="sz.time"></div></div></div>';
-  h += '<div class="card"><span class="h2">지속 시간</span><div class="chips">' + DUR.map(function (x) { return chip(x, z.duration === x, 'szOne', 'duration|' + x); }).join('') + '</div></div>';
+  h += '<div class="card"><div class="between"><span class="h2">지속 시간</span><span class="sub">하나 선택</span></div><div class="chips">' + DUR.map(function (x) { return chip(x, z.duration === x, 'szOne', 'duration|' + x); }).join('') + '</div></div>';
   h += group('종류', '하나 선택', SZ_TYPES, function (x) { return z.type === x; }, 'type');
   h += group('발생 상황', '하나 선택', SZ_SITS, function (x) { return z.situation === x; }, 'situation');
   h += '<div class="card"><div class="between"><span class="h2">전조 증상</span><span class="sub">여러 개 선택</span></div><div class="chips">' +
@@ -563,7 +563,7 @@ var ACTIONS = {
     if (!confirm(f.name + ' 복용을 중단할까요?\n오늘 화면과 알림에서 빠지고, 지난 기록은 남아요.')) return;
     act('api_stopMed', f.id).then(function (res) { if (res) { S.sheet = null; toast(f.name + ' 복용 중단됨'); } });
   },
-  szOne: function (v) { var i = v.indexOf('|'); var k = v.slice(0, i), x = v.slice(i + 1); S.sz[k] = S.sz[k] === x && k !== 'duration' ? '' : x; render(); },
+  szOne: function (v) { var i = v.indexOf('|'); var k = v.slice(0, i), x = v.slice(i + 1); S.sz[k] = S.sz[k] === x ? '' : x; render(); },
   szAura: function (v) { var a = S.sz.aura, i = a.indexOf(v); if (i >= 0) a.splice(i, 1); else a.push(v); render(); },
   saveSz: function () {
     var z = S.sz;
@@ -571,7 +571,7 @@ var ACTIONS = {
     act('api_saveSeizure', S.who, z).then(function (res) {
       if (!res) return;
       S.sz = null; S.tab = 'today'; S.monthData = null; refresh();
-      toast('상담대비 기록 저장 · 가족에게 알림을 보냈어요');
+      toast(res.notified ? '상담대비 기록 저장 · 가족에게 알림을 보냈어요' : '상담대비 기록은 저장됐어요 (가족 알림은 보내지 못했어요)', !res.notified);
       window.scrollTo(0, 0);
     });
   },

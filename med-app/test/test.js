@@ -350,4 +350,22 @@ test('setup 없이도 예전 탭을 찾아 이름을 바꿈', () => {
   assert.strictEqual(env.sheets['상담대비기록'].getLastRow(), 2);
 });
 
+test('상담대비 기록: 알림 결과를 알려 주고, 알림이 실패해도 기록은 한 번만 저장', () => {
+  const { env, c, k } = fresh();
+  env.setNow(at('14:12'));
+  const ok = c.api_saveSeizure(k, '엄마', { date: '2026-10-24', time: '14:05', duration: '30분 이상', type: '멍해짐', situation: '게임 중' });
+  assert.strictEqual(ok.status, 'ok');
+  assert.strictEqual(ok.notified, true);
+  env.net.fail = true;
+  const r = c.api_saveSeizure(k, '아빠', { date: '2026-10-24', time: '15:00', duration: '1시간 이상', type: '전신 떨림', situation: '핸드폰 중' });
+  assert.strictEqual(r.status, 'ok', '네트워크 오류여도 오류로 돌려보내지 않음');
+  assert.strictEqual(r.notified, false);
+  assert.strictEqual(env.sheets['상담대비기록'].getLastRow(), 3, '두 건만 저장 (중복 없음)');
+  const row = env.sheets['상담대비기록'].rows[2];
+  deq(row.slice(3, 6), ['1시간 이상', '전신 떨림', '핸드폰 중']);
+  env.net.fail = false;
+  env.props.NTFY_TOPIC = '';
+  assert.strictEqual(c.api_saveSeizure(k, '엄마', { type: '기타' }).notified, false, '토픽이 없으면 보내지 않음');
+});
+
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));
