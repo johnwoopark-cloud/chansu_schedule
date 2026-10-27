@@ -108,7 +108,7 @@ nav.tabs button.on{color:var(--blue);font-weight:700}
 var URL_KEY = <?!= jsonForHtml_(urlKey) ?>;
 var APP_URL = <?!= jsonForHtml_(appUrl) ?>;
 // Code.gs의 APP_VERSION과 같아야 한다
-var CLIENT_VERSION = '5';
+var CLIENT_VERSION = '6';
 // 상담대비 기록 탭 켜기/끄기. 숨기려면 false로 바꾸고 새 버전으로 배포 (기존 기록은 시트에 그대로 있음)
 var SHOW_SEIZURE = true;
 
@@ -378,7 +378,7 @@ function renderSeizure() {
     SZ_AURA.map(function (x) { return chip(x, z.aura.indexOf(x) >= 0, 'szAura'); }).join('') + '</div></div>';
   h += group('당시 복약', '하나 선택', SZ_MED, function (x) { return z.medState === x; }, 'medState');
   h += '<div class="card"><div class="field"><label class="lbl" for="szMemo">메모</label><textarea id="szMemo" placeholder="예: 이후 잘 먹고 기운 있음" data-in="sz.memo">' + esc(z.memo) + '</textarea></div></div>';
-  h += '<button class="btn wide" data-act="saveSz"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '저장하고 가족에게 알리기') + '</button>';
+  h += '<button class="btn wide" data-act="saveSz"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '저장하기') + '</button>';
   return h;
 }
 function group(title, hint, items, isOn, field) {
@@ -560,7 +560,7 @@ var ACTIONS = {
   },
   stopMed: function () {
     var f = S.form;
-    if (!confirm(f.name + ' 복용을 중단할까요?\n오늘 화면과 알림에서 빠지고, 지난 기록은 남아요.')) return;
+    if (!confirm(f.name + ' 복용을 중단할까요?\n오늘 화면에서 빠지고, 지난 기록은 남아요.')) return;
     act('api_stopMed', f.id).then(function (res) { if (res) { S.sheet = null; toast(f.name + ' 복용 중단됨'); } });
   },
   szOne: function (v) { var i = v.indexOf('|'); var k = v.slice(0, i), x = v.slice(i + 1); S.sz[k] = S.sz[k] === x ? '' : x; render(); },
@@ -571,7 +571,7 @@ var ACTIONS = {
     act('api_saveSeizure', S.who, z).then(function (res) {
       if (!res) return;
       S.sz = null; S.tab = 'today'; S.monthData = null; refresh();
-      toast(res.notified ? '상담대비 기록 저장 · 가족에게 알림을 보냈어요' : '상담대비 기록은 저장됐어요 (가족 알림은 보내지 못했어요)', !res.notified);
+      toast('상담대비 기록을 저장했어요 · 가족 화면 달력에도 보여요');
       window.scrollTo(0, 0);
     });
   },

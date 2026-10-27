@@ -23,15 +23,16 @@ function fresh() {
   return { env, c, k, sched: meds.find((m) => !m.prn), prn: meds.find((m) => m.prn) };
 }
 
-test('setup: 시트, 비밀 키, 토픽, 트리거', () => {
+test('setup: 시트와 비밀 키, 알림 트리거는 만들지 않음', () => {
   const env = createEnv({ now: at('07:00') });
+  env.triggers.push({ getHandlerFunction: () => 'checkReminders' }); // 예전 버전이 남긴 트리거
+  env.triggers.push({ getHandlerFunction: () => 'somethingElse' });
   env.ctx.setup();
   deq(Object.keys(env.sheets).sort(), ['상담대비기록', '복약기록', '약목록'].sort());
   assert.match(env.props.APP_KEY, /^[A-Za-z0-9]{24}$/);
-  assert.match(env.props.NTFY_TOPIC, /^fam-med-[a-z0-9]{12}$/);
-  assert.strictEqual(env.triggers.length, 1);
+  assert.strictEqual(env.props.NTFY_TOPIC, undefined);
+  deq(env.triggers.map((t) => t.getHandlerFunction()), ['somethingElse'], '예전 알림 트리거만 지움');
   env.ctx.setup();
-  assert.strictEqual(env.triggers.length, 1, '두 번 실행해도 트리거는 하나');
   assert.strictEqual(env.sheets['약목록'].getLastRow(), 1, '두 번 실행해도 머리글만');
 });
 
@@ -125,64 +126,30 @@ test('필요 시 약: 자정을 넘겨도 간격 확인', () => {
   assert.strictEqual(r.state.prnToday.length, 0, '오늘 목록은 새 날짜 기준');
 });
 
-test('알림: 30분/60분, 중복 없음, 기록하면 멈춤', () => {
-  const { env, c, k, sched } = fresh();
-  const titles = () => env.fetches.map((f) => f.body.title);
-  env.setNow(at('08:20')); c.checkReminders();
-  assert.strictEqual(env.fetches.length, 0);
-  env.setNow(at('08:35')); c.checkReminders();
-  deq(titles(), ['08:00 약 먹었나요?']);
-  assert.strictEqual(env.fetches[0].body.topic, env.props.NTFY_TOPIC);
-  assert.strictEqual(env.fetches[0].body.click, 'https://script.google.com/macros/s/TEST/exec');
-  assert.ok(!JSON.stringify(env.fetches[0].body).includes(k), '알림에 비밀 키 없음');
-  env.setNow(at('08:50')); c.checkReminders();
-  assert.strictEqual(env.fetches.length, 1, '같은 단계는 한 번만');
-  env.setNow(at('09:05')); c.checkReminders();
-  assert.strictEqual(titles()[1], '08:00 약, 아직 기록이 없어요');
-  assert.strictEqual(env.fetches[1].body.priority, 5);
-  env.setNow(at('09:20')); c.checkReminders();
-  assert.strictEqual(env.fetches.length, 2);
-  // 20:00 회차는 기록하면 알림 없음
-  env.setNow(at('20:05')); c.api_takeDose(k, '아빠', sched.id, '20:00');
-  env.setNow(at('20:35')); c.checkReminders();
-  assert.strictEqual(env.fetches.length, 2);
-});
-
-test('알림: 늦게 시작해도 2차만 한 번, 조용한 시간엔 없음', () => {
+test('예전 알림 트리거가 돌면 스스로 지우고 아무것도 보내지 않음', () => {
   const { env, c } = fresh();
-  env.setNow(at('09:10')); c.checkReminders();
-  env.setNow(at('09:25')); c.checkReminders();
-  deq(env.fetches.map((f) => f.body.title), ['08:00 약, 아직 기록이 없어요']);
-  env.setNow(at('23:30')); c.checkReminders();
-  env.setNow(at('06:45', '2026-10-25')); c.checkReminders();
-  assert.strictEqual(env.fetches.length, 1);
+  env.triggers.push({ getHandlerFunction: () => 'checkReminders' });
+  env.setNow(at('09:05'));                 // 08:00 약 미기록 상태
+  c.checkReminders();
+  assert.strictEqual(env.triggers.length, 0);
+  assert.strictEqual(env.fetches.length, 0);
 });
 
-test('알림: 재고 부족은 하루 한 번, 9시 이후', () => {
-  const { env, c, k } = fresh();
+test('재고 부족은 화면 표시용 값으로만', () => {
+  const { c, k } = fresh();
   c.api_addMed(k, { name: '데파킨', dose: '2ml', stock: '20ml', times: ['08:00', '20:00'] });
   const dep = c.api_today(k).meds.find((m) => m.name === '데파킨');
   assert.strictEqual(dep.daysLeft, 5);
   assert.strictEqual(dep.low, true);
-  env.setNow(at('08:00')); c.checkReminders();
-  assert.strictEqual(env.fetches.filter((f) => f.body.title.includes('얼마 안')).length, 0);
-  env.setNow(at('09:00')); c.checkReminders();
-  env.setNow(at('09:15')); c.checkReminders();
-  const stock = env.fetches.filter((f) => f.body.title.includes('얼마 안'));
-  assert.strictEqual(stock.length, 1);
-  assert.match(stock[0].body.message, /데파킨 20ml \(약 5일분\)/);
-  assert.doesNotMatch(stock[0].body.message, /케프라/);
 });
 
-test('경련 기록 저장과 가족 알림', () => {
+test('상담대비 기록 저장 (알림 없음)', () => {
   const { env, c, k } = fresh();
   env.setNow(at('14:12'));
   c.api_saveSeizure(k, '아이', { date: '2026-10-24', time: '14:05', duration: '1분', type: '부분 경련', situation: '일상생활 중', aura: ['쓴맛', '공포감'], medState: '제때 복용', memo: '금방 회복' });
   const row = env.sheets['상담대비기록'].getRange(2, 1, 1, 11).getDisplayValues()[0];
   deq(row.slice(1, 10), ['2026-10-24', '14:05', '1분', '부분 경련', '일상생활 중', '쓴맛, 공포감', '제때 복용', '금방 회복', '아이']);
-  const n = env.fetches[env.fetches.length - 1].body;
-  assert.strictEqual(n.title, '상담대비 기록이 추가됐어요');
-  assert.doesNotMatch(n.message, /부분|쓴맛|금방/, '알림에 상세 건강정보 없음');
+  assert.strictEqual(env.fetches.length, 0, '외부로 아무것도 보내지 않음');
 });
 
 test('경련 기록: 이상한 날짜·시각은 지금으로', () => {
@@ -271,15 +238,13 @@ test('약 수정: 정해진 시간 ↔ 필요 시 전환', () => {
   assert.strictEqual(m.gapH, 8);
 });
 
-test('복용 중단: 목록·알림에서 빠지고 기록은 남음', () => {
+test('복용 중단: 목록에서 빠지고 기록은 남음', () => {
   const { env, c, k, sched } = fresh();
   env.setNow(at('08:03'));
   c.api_takeDose(k, '엄마', sched.id, '08:00');
   const r = c.api_stopMed(k, sched.id);
   assert.strictEqual(r.state.meds.find((x) => x.id === sched.id), undefined);
   assert.strictEqual(env.sheets['복약기록'].getLastRow(), 2);
-  env.setNow(at('20:45')); c.checkReminders();
-  assert.strictEqual(env.fetches.length, 0, '중단한 약은 알림 없음');
   assert.throws(() => c.api_takeDose(k, '엄마', sched.id, '20:00'), /찾을 수 없어요/);
   assert.throws(() => c.api_stopMed(k, sched.id), /찾을 수 없어요/);
 });
@@ -350,22 +315,13 @@ test('setup 없이도 예전 탭을 찾아 이름을 바꿈', () => {
   assert.strictEqual(env.sheets['상담대비기록'].getLastRow(), 2);
 });
 
-test('상담대비 기록: 알림 결과를 알려 주고, 알림이 실패해도 기록은 한 번만 저장', () => {
+test('상담대비 기록: 새 선택지 저장, 외부 전송 없음', () => {
   const { env, c, k } = fresh();
   env.setNow(at('14:12'));
-  const ok = c.api_saveSeizure(k, '엄마', { date: '2026-10-24', time: '14:05', duration: '30분 이상', type: '멍해짐', situation: '게임 중' });
-  assert.strictEqual(ok.status, 'ok');
-  assert.strictEqual(ok.notified, true);
-  env.net.fail = true;
   const r = c.api_saveSeizure(k, '아빠', { date: '2026-10-24', time: '15:00', duration: '1시간 이상', type: '전신 떨림', situation: '핸드폰 중' });
-  assert.strictEqual(r.status, 'ok', '네트워크 오류여도 오류로 돌려보내지 않음');
-  assert.strictEqual(r.notified, false);
-  assert.strictEqual(env.sheets['상담대비기록'].getLastRow(), 3, '두 건만 저장 (중복 없음)');
-  const row = env.sheets['상담대비기록'].rows[2];
-  deq(row.slice(3, 6), ['1시간 이상', '전신 떨림', '핸드폰 중']);
-  env.net.fail = false;
-  env.props.NTFY_TOPIC = '';
-  assert.strictEqual(c.api_saveSeizure(k, '엄마', { type: '기타' }).notified, false, '토픽이 없으면 보내지 않음');
+  deq(r, { status: 'ok' });
+  deq(env.sheets['상담대비기록'].rows[1].slice(3, 6), ['1시간 이상', '전신 떨림', '핸드폰 중']);
+  assert.strictEqual(env.fetches.length, 0);
 });
 
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));

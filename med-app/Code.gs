@@ -3,7 +3,7 @@
  *
  * 데이터는 이 스크립트가 붙어 있는 구글 스프레드시트에 저장된다.
  * 접속은 비밀 키(APP_KEY) 방식: 가족 주소(웹앱 URL?k=키)를 한 번 열면 그 폰에 키가 저장된다.
- * 비밀 키와 ntfy 토픽은 코드가 아니라 스크립트 속성(Script Properties)에만 저장한다.
+ * 비밀 키는 코드가 아니라 스크립트 속성(Script Properties)에만 저장한다.
  *
  * 처음 설치: setup() 실행 → 웹앱 배포 → showLinks() 실행 (자세한 내용은 설치가이드.md)
  */
@@ -12,13 +12,7 @@ const CONFIG = {
   PEOPLE: ['엄마', '아빠', '아이'],
   PRN_REASONS: ['두통', '발열', '기타'],
   PAST_DAYS: 7,                 // 며칠 전 복약까지 나중에 기록할 수 있는지
-  REMIND_AFTER_MIN: [30, 60],   // 복약 예정 시각 이후 1차·2차 알림 (분)
-  REMIND_WINDOW_MIN: 240,       // 예정 시각에서 이만큼 지나면 더 이상 독촉하지 않음 (분)
-  QUIET_START_HOUR: 23,         // 이 시각부터
-  QUIET_END_HOUR: 7,            // 이 시각 전까지는 알림 보내지 않음
-  LOW_STOCK_DAYS: 7,            // 남은 양이 이 일수 미만이면 알림
-  STOCK_ALERT_HOUR: 9,          // 재고 알림은 이 시각 이후 하루 한 번
-  NTFY_SERVER: 'https://ntfy.sh',
+  LOW_STOCK_DAYS: 7,            // 남은 양이 이 일수 미만이면 화면에 주황색으로 표시
 };
 
 const SHEETS = {
@@ -38,7 +32,7 @@ const SHEETS = {
 };
 
 // index.html의 CLIENT_VERSION과 같아야 한다. 둘이 다르면 화면에 "파일 버전이 달라요" 안내가 뜬다.
-const APP_VERSION = '5';
+const APP_VERSION = '6';
 
 const KIND_SCHEDULED = '정해진시간';
 const KIND_PRN = '필요시';
@@ -217,14 +211,7 @@ function api_saveSeizure(key, who, d) {
       '당시복약': clip(d.medState, 20), '메모': clip(d.memo, 500), '기록자': who, '저장시각': stamp_(),
     });
   });
-  // 기록은 이미 저장됐으므로, 알림이 실패해도 오류로 돌려보내지 않는다 (다시 저장해서 중복되는 것 방지)
-  let notified = false;
-  try {
-    notified = sendNtfy_('상담대비 기록이 추가됐어요', who + '님이 ' + date.slice(5).replace('-', '/') + ' ' + time + ' 상담대비 기록을 남겼어요.', { priority: 4, tags: ['memo'] });
-  } catch (err) {
-    console.warn('ntfy 전송 오류: ' + err);
-  }
-  return { status: 'ok', notified: notified };
+  return { status: 'ok' };
 }
 
 function api_month(key, year, month) {
@@ -316,82 +303,25 @@ function todayState_(day) {
   };
 }
 
-// ───────────────────────── 알림 (15분마다 실행) ─────────────────────────
+// ───────────────────────── 예전 알림 트리거 정리 ─────────────────────────
 
+/**
+ * 알림 기능은 뺐다. 예전에 등록된 15분 트리거가 이 함수를 부르면 트리거를 스스로 지운다.
+ * (이 함수가 없으면 트리거가 돌 때마다 "함수를 찾을 수 없음" 오류 메일이 온다)
+ */
 function checkReminders() {
-  const now = new Date();
-  const hour = Number(Utilities.formatDate(now, tz_(), 'H'));
-  if (hour >= CONFIG.QUIET_START_HOUR || hour < CONFIG.QUIET_END_HOUR) return;
-  const today = today_();
-  const nowMin = toMin_(nowHM_());
-  const sent = sentLog_(today);
-  const state = todayState_();
-  const scheduled = state.meds.filter((m) => !m.prn);
-  const times = uniq_([].concat.apply([], scheduled.map((m) => m.times))).sort();
-
-  times.forEach((t) => {
-    const late = nowMin - toMin_(t);
-    if (late < CONFIG.REMIND_AFTER_MIN[0] || late > CONFIG.REMIND_WINDOW_MIN) return;
-    const missing = scheduled.filter((m) => m.times.indexOf(t) >= 0 && !state.taken[m.id + '|' + t]);
-    if (!missing.length) return;
-    const level = late >= CONFIG.REMIND_AFTER_MIN[1] ? 2 : 1;
-    const k = t + '|L' + level;
-    if (sent.keys.indexOf(k) >= 0) return;
-    sendNtfy_(
-      level === 2 ? t + ' 약, 아직 기록이 없어요' : t + ' 약 먹었나요?',
-      missing.map((m) => m.name).join(', ') + ' · ' + late + '분 지났어요. 먹었다면 앱에서 기록해 주세요.',
-      { priority: level === 2 ? 5 : 4, tags: ['pill'] }
-    );
-    sent.keys.push(k);
-    if (level === 2) sent.keys.push(t + '|L1');
-  });
-
-  if (hour >= CONFIG.STOCK_ALERT_HOUR && sent.keys.indexOf('stock') < 0) {
-    const low = state.meds.filter((m) => m.low);
-    if (low.length) {
-      sendNtfy_('약이 얼마 안 남았어요',
-        low.map((m) => m.name + ' ' + m.stock + m.unit + (m.daysLeft != null ? ' (약 ' + m.daysLeft + '일분)' : '')).join(', ') + ' · 처방받을 때가 됐어요.',
-        { priority: 3, tags: ['package'] });
-    }
-    sent.keys.push('stock');
-  }
-  saveSentLog_(sent);
+  removeOldTriggers_();
 }
 
-function sentLog_(today) {
-  const raw = PropertiesService.getScriptProperties().getProperty('SENT_LOG');
-  let log = null;
-  try { log = raw ? JSON.parse(raw) : null; } catch (err) { log = null; }
-  if (!log || log.date !== today) log = { date: today, keys: [] };
-  return log;
-}
-
-function saveSentLog_(log) {
-  PropertiesService.getScriptProperties().setProperty('SENT_LOG', JSON.stringify(log));
-}
-
-function sendNtfy_(title, message, opts) {
-  opts = opts || {};
-  const topic = PropertiesService.getScriptProperties().getProperty('NTFY_TOPIC');
-  if (!topic) return false;
-  const url = appUrl_();
-  const body = { topic: topic, title: title, message: message, priority: opts.priority || 3, tags: opts.tags || [] };
-  if (url) {
-    body.click = url;
-    body.actions = [{ action: 'view', label: '앱 열기', url: url }];
-  }
-  const res = UrlFetchApp.fetch(CONFIG.NTFY_SERVER, {
-    method: 'post', contentType: 'application/json; charset=utf-8',
-    payload: JSON.stringify(body), muteHttpExceptions: true,
-  });
-  const code = res.getResponseCode();
-  if (code >= 300) console.warn('ntfy 전송 실패 ' + code + ': ' + res.getContentText());
-  return code < 300;
+function removeOldTriggers_() {
+  ScriptApp.getProjectTriggers()
+    .filter((t) => t.getHandlerFunction() === 'checkReminders')
+    .forEach((t) => ScriptApp.deleteTrigger(t));
 }
 
 // ───────────────────────── 관리용 (편집기에서 직접 실행) ─────────────────────────
 
-/** 처음 한 번: 시트 만들기, 비밀 키·토픽 만들기, 15분 알림 트리거 등록 */
+/** 처음 한 번: 시트 만들기, 비밀 키 만들기 (예전 알림 트리거가 있으면 지움) */
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   Object.keys(SHEETS).forEach((k) => {
@@ -404,25 +334,18 @@ function setup() {
   });
   const props = PropertiesService.getScriptProperties();
   if (!props.getProperty('APP_KEY')) props.setProperty('APP_KEY', randomToken_(24));
-  if (!props.getProperty('NTFY_TOPIC')) props.setProperty('NTFY_TOPIC', 'fam-med-' + randomToken_(12).toLowerCase());
-
-  ScriptApp.getProjectTriggers()
-    .filter((t) => t.getHandlerFunction() === 'checkReminders')
-    .forEach((t) => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('checkReminders').timeBased().everyMinutes(15).create();
+  removeOldTriggers_();
 
   console.log('설정 완료. 이제 [배포 → 새 배포 → 웹 앱]으로 배포한 뒤 showLinks()를 실행하세요.');
   showLinks();
 }
 
-/** 가족에게 보낼 주소와 ntfy 토픽을 보여 준다 */
+/** 가족에게 보낼 주소를 보여 준다 */
 function showLinks() {
   const props = PropertiesService.getScriptProperties();
   const key = props.getProperty('APP_KEY');
-  const topic = props.getProperty('NTFY_TOPIC');
   const url = appUrl_();
   console.log('비밀 키: ' + key);
-  console.log('ntfy 토픽: ' + topic + '   (ntfy 앱에서 이 이름을 구독)');
   if (url) {
     console.log('가족 주소(이 주소를 가족 폰에서 한 번 열기): ' + url + '?k=' + key);
   } else {
@@ -436,12 +359,6 @@ function rotateKey() {
   PropertiesService.getScriptProperties().setProperty('APP_KEY', randomToken_(24));
   console.log('비밀 키를 바꿨습니다. 모든 폰에서 새 가족 주소로 다시 등록해야 합니다.');
   showLinks();
-}
-
-/** ntfy 알림이 오는지 시험 */
-function testNtfy() {
-  const ok = sendNtfy_('알림 시험', '이 알림이 보이면 설정이 끝났어요.', { priority: 3, tags: ['white_check_mark'] });
-  console.log(ok ? '보냈습니다. 폰에 알림이 왔는지 확인하세요.' : '보내지 못했습니다. setup()을 먼저 실행했는지 확인하세요.');
 }
 
 // ───────────────────────── 시트 읽기/쓰기 ─────────────────────────
@@ -642,11 +559,6 @@ function normHM_(s) {
   if (!m) return '';
   const v = pad2_(Number(m[1])) + ':' + m[2];
   return isHM_(v) ? v : '';
-}
-
-function toMin_(hm) {
-  const p = hm.split(':').map(Number);
-  return p[0] * 60 + p[1];
 }
 
 function pad2_(n) {

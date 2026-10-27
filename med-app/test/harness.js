@@ -65,7 +65,6 @@ function createEnv(opts = {}) {
   const props = {};
   const fetches = [];
   const triggers = [];
-  const net = { fail: false }; // true면 알림 전송이 네트워크 오류로 실패
   const ss = {
     getSheetByName: (n) => sheets[n] || null,
     insertSheet: (n) => { const sh = new Sheet(n); sh.setName = (nn) => { delete sheets[sh.name]; sh.name = nn; sheets[nn] = sh; }; return (sheets[n] = sh); },
@@ -86,7 +85,7 @@ function createEnv(opts = {}) {
       deleteTrigger: (t) => triggers.splice(triggers.indexOf(t), 1),
       newTrigger: (fn) => ({ timeBased: () => ({ everyMinutes: (m) => ({ create: () => triggers.push({ fn, m, getHandlerFunction: () => fn }) }) }) }),
     },
-    UrlFetchApp: { fetch: (url, o) => { if (net.fail) throw new Error('Address unavailable: ' + url); fetches.push({ url, body: JSON.parse(o.payload) }); return { getResponseCode: () => 200, getContentText: () => '{}' }; } },
+    UrlFetchApp: { fetch: (url, o) => { fetches.push({ url, body: JSON.parse(o.payload) }); return { getResponseCode: () => 200, getContentText: () => '{}' }; } },
     Utilities: {
       formatDate: (d, tz, fmt) => {
         const p = tzParts(d);
@@ -103,7 +102,7 @@ function createEnv(opts = {}) {
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8'), ctx, { filename: 'Code.gs' });
   return {
-    ctx, sheets, props, fetches, triggers, net,
+    ctx, sheets, props, fetches, triggers,
     setNow: (iso) => { nowMs = Date.parse(iso); },
     key: () => props.APP_KEY,
   };

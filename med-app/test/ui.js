@@ -206,10 +206,11 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await snap('seizure-form');
   await page.click('[data-act="saveSz"]');
   await settle();
-  assert.match(await text(), /상담대비 기록 저장 · 가족에게 알림을 보냈어요/);
+  assert.match(await text(), /상담대비 기록을 저장했어요/);
+  assert.doesNotMatch(await text(), /알림/);
   const szRow = env.sheets['상담대비기록'].getRange(2, 1, 1, 11).getDisplayValues()[0];
   assert.deepStrictEqual(szRow.slice(1, 10), ['2026-10-24', '14:02', '30분 이상', '부분 떨림', '공부 중', '쓴맛', '제때 복용', '금방 회복, 잘 놀고 있음', '아이']);
-  assert.ok(env.fetches.some((f) => f.body.title === '상담대비 기록이 추가됐어요'));
+  assert.strictEqual(env.fetches.length, 0, '알림 전송 없음');
 
   // 9. 달력
   await page.click('nav [data-v="cal"]');
