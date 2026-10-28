@@ -27,7 +27,7 @@ const SHEETS = {
   SEIZURES: {
     name: '상담대비기록',
     oldNames: ['경련기록'],  // 예전 이름의 탭이 있으면 자동으로 이름을 바꿔 그대로 쓴다
-    headers: ['기록ID', '날짜', '시작시각', '지속시간', '종류', '상황', '전조증상', '당시복약', '메모', '기록자', '저장시각'],
+    headers: ['기록ID', '날짜', '시작시각', '지속시간', '종류', '상황', '전조증상', '당시복약', '메모', '기록자', '저장시각', '수정시각'],
   },
   VISITS: {
     name: '상담진료기록',
@@ -41,7 +41,7 @@ const VISIT_KINDS = ['상담센터', '병원 상담', '검사'];
 const VISIT_TEST = '검사';
 
 // index.html의 CLIENT_VERSION과 같아야 한다. 둘이 다르면 화면에 "파일 버전이 달라요" 안내가 뜬다.
-const APP_VERSION = '8';
+const APP_VERSION = '9';
 
 const KIND_SCHEDULED = '정해진시간';
 const KIND_PRN = '필요시';
@@ -205,22 +205,54 @@ function medFields_(m) {
   };
 }
 
+/** 상담대비 기록 저장. d.id가 있으면 그 기록을 고친다 (처음 기록한 사람·저장시각은 유지) */
 function api_saveSeizure(key, who, d) {
   auth_(key);
   who = checkWho_(who);
   d = d || {};
   const clip = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(d.date) ? d.date : today_();
-  const time = isHM_(d.time) ? d.time : nowHM_();
-  withLock_(() => {
-    appendRow_(SHEETS.SEIZURES, {
-      '기록ID': newId_('S'), '날짜': date, '시작시각': time, '지속시간': clip(d.duration, 30),
-      '종류': clip(d.type, 30), '상황': clip(d.situation, 30),
-      '전조증상': (Array.isArray(d.aura) ? d.aura : []).map((x) => clip(x, 30)).join(', '),
-      '당시복약': clip(d.medState, 20), '메모': clip(d.memo, 500), '기록자': who, '저장시각': stamp_(),
-    });
+  const fields = {
+    '날짜': /^\d{4}-\d{2}-\d{2}$/.test(d.date) ? d.date : today_(),
+    '시작시각': isHM_(d.time) ? d.time : nowHM_(),
+    '지속시간': clip(d.duration, 30), '종류': clip(d.type, 30), '상황': clip(d.situation, 30),
+    '전조증상': (Array.isArray(d.aura) ? d.aura : []).map((x) => clip(x, 30)).filter(Boolean).join(', '),
+    '당시복약': clip(d.medState, 20), '메모': clip(d.memo, 500),
+  };
+  return withLock_(() => {
+    if (d.id) {
+      const row = readTable_(SHEETS.SEIZURES).find((r) => r['기록ID'] === d.id);
+      if (!row) throw new Error('기록을 찾을 수 없어요. 새로고침 해 주세요.');
+      updateRow_(SHEETS.SEIZURES, row._row, Object.assign(fields, { '수정시각': stamp_() }));
+    } else {
+      appendRow_(SHEETS.SEIZURES, Object.assign({ '기록ID': newId_('S') }, fields, { '기록자': who, '저장시각': stamp_() }));
+    }
+    return { status: 'ok' };
   });
-  return { status: 'ok' };
+}
+
+/** 상담대비 기록 최근 것부터 (limit개까지) */
+function api_seizures(key, limit) {
+  auth_(key);
+  limit = Math.min(200, Math.max(1, Number(limit) || 20));
+  return readTable_(SHEETS.SEIZURES).filter((r) => r['기록ID']).map(seizureOut_)
+    .sort((a, b) => (a.date + a.time < b.date + b.time ? 1 : a.date + a.time > b.date + b.time ? -1 : b._order - a._order))
+    .slice(0, limit);
+}
+
+function api_deleteSeizure(key, id) {
+  auth_(key);
+  return withLock_(() => {
+    const row = readTable_(SHEETS.SEIZURES).find((r) => r['기록ID'] === id);
+    if (row) sheet_(SHEETS.SEIZURES).deleteRow(row._row);
+    return { status: 'ok' };
+  });
+}
+
+function seizureOut_(r) {
+  return {
+    id: r['기록ID'], date: r['날짜'], time: r['시작시각'], duration: r['지속시간'], type: r['종류'], situation: r['상황'],
+    aura: r['전조증상'], medState: r['당시복약'], memo: r['메모'], by: r['기록자'], updatedAt: r['수정시각'] || '', _order: r._row,
+  };
 }
 
 // ───────────────────────── 상담 진료 기록 ─────────────────────────
@@ -317,10 +349,7 @@ function api_month(key, year, month) {
         name: r['약이름'], slot: r['예정시각'], at: r['실제시각'], by: r['기록자'],
         prn: r['구분'] === KIND_PRN, reason: r['이유'],
       })),
-      seizures: seizures.filter((r) => r['날짜'] === date).map((r) => ({
-        time: r['시작시각'], duration: r['지속시간'], type: r['종류'], situation: r['상황'],
-        aura: r['전조증상'], medState: r['당시복약'], memo: r['메모'], by: r['기록자'],
-      })),
+      seizures: seizures.filter((r) => r['날짜'] === date).map(seizureOut_),
     });
   }
   const pastSeizures = seizures.map((r) => r['날짜']).filter((x) => x && x <= today).sort();
@@ -484,7 +513,13 @@ function updateRow_(def, rowNum, obj) {
   const sh = sheet_(def);
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map((h) => String(h).trim());
   Object.keys(obj).forEach((h) => {
-    const col = head.indexOf(h) + 1;
+    let col = head.indexOf(h) + 1;
+    if (!col && def.headers.indexOf(h) >= 0) {
+      // 새 버전에서 늘어난 칸(예: 수정시각)은 예전 시트 오른쪽 끝에 머리글을 붙여서 만든다
+      head.push(h);
+      col = head.length;
+      sh.getRange(1, col).setNumberFormat('@').setValue(h).setFontWeight('bold').setBackground('#EEF1F5');
+    }
     if (col > 0) sh.getRange(rowNum, col).setNumberFormat('@').setValue(String(obj[h]));
   });
 }

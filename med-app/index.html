@@ -114,7 +114,7 @@ nav.tabs button.on{color:var(--blue);font-weight:700}
 var URL_KEY = <?!= jsonForHtml_(urlKey) ?>;
 var APP_URL = <?!= jsonForHtml_(appUrl) ?>;
 // Code.gs의 APP_VERSION과 같아야 한다
-var CLIENT_VERSION = '8';
+var CLIENT_VERSION = '9';
 // 상담대비 기록 탭 켜기/끄기. 숨기려면 false로 바꾸고 새 버전으로 배포 (기존 기록은 시트에 그대로 있음)
 var SHOW_SEIZURE = true;
 
@@ -127,7 +127,7 @@ var TIME_CHOICES = ['07:00', '08:00', '09:00', '12:00', '13:00', '18:00', '19:00
 
 var S = {
   screen: 'loading', key: '', who: '', people: ['엄마', '아빠', '아이'], tab: 'today',
-  visits: null, vfilter: '전체', vform: null, vopen: null,
+  szList: null, visits: null, vfilter: '전체', vform: null, vopen: null,
   day: '', data: null, warn: null, pendingPrn: null, reason: '두통', busy: false, toast: '',
   sheet: null, form: null, sz: null, month: null, monthData: null, selDay: null, justRegistered: false
 };
@@ -377,21 +377,65 @@ function renderToday(d) {
 function newSz() {
   return { date: todayYMD(), time: nowHM(), duration: '', durationEtc: '', type: '', situation: '', aura: [], medState: '', memo: '' };
 }
+/** 저장된 기록을 입력 폼 값으로 (목록에 없는 예전 값·직접 적은 지속 시간도 그대로 살림) */
+function szFromRecord(r) {
+  var dur = r.duration || '', known = DUR.indexOf(dur) >= 0;
+  return {
+    id: r.id, date: r.date, time: r.time, duration: known ? dur : dur ? '기타' : '', durationEtc: known || dur === '기타' ? '' : dur,
+    type: r.type || '', situation: r.situation || '', aura: r.aura ? String(r.aura).split(/\s*,\s*/).filter(Boolean) : [],
+    medState: r.medState || '', memo: r.memo || ''
+  };
+}
+function withExtra(list, vals) {
+  return list.concat([].concat(vals).filter(function (v) { return v && list.indexOf(v) < 0; }));
+}
+function findSz(id) {
+  var all = (S.szList || []).slice();
+  if (S.monthData) S.monthData.days.forEach(function (d) { all = all.concat(d.seizures); });
+  return all.filter(function (r) { return r.id === id; })[0];
+}
+function loadSzList() {
+  call('api_seizures', S.key, 20).then(function (list) { S.szList = list; render(); }, function (e) { toast('불러오지 못했어요: ' + e.message, true); });
+}
 function renderSeizure() {
   var z = S.sz || (S.sz = newSz());
-  var h = '<div class="card"><div class="grid2"><div class="field"><label class="lbl" for="szDate">날짜</label><input id="szDate" type="date" value="' + esc(z.date) + '" data-in="sz.date"></div>' +
+  var h = '';
+  if (z.id) {
+    h += '<div class="card" style="background:var(--orange-soft);border-color:var(--orange-line);gap:8px"><span class="h2">기록 수정 중</span>' +
+      '<span class="sub" style="color:var(--ink2)">' + ymdLabel(z.date) + ' 기록을 고치고 있어요. 고친 뒤 [수정 저장]을 누르세요.</span>' +
+      '<button class="btn ghost" style="align-self:flex-start" data-act="szCancel">수정 취소</button></div>';
+  }
+  h += '<div class="card"><div class="grid2"><div class="field"><label class="lbl" for="szDate">날짜</label><input id="szDate" type="date" value="' + esc(z.date) + '" data-in="sz.date"></div>' +
     '<div class="field"><label class="lbl" for="szTime">시작 시각</label><input id="szTime" type="time" value="' + esc(z.time) + '" data-in="sz.time"></div></div></div>';
   h += '<div class="card"><div class="between"><span class="h2">지속 시간</span><span class="sub">하나 선택</span></div><div class="chips">' + DUR.map(function (x) { return chip(x, z.duration === x, 'szOne', 'duration|' + x); }).join('') + '</div>' +
     (z.duration === '기타' ? '<div class="field"><label class="lbl" for="szDurEtc">지속 시간 직접 입력</label><input id="szDurEtc" value="' + esc(z.durationEtc) + '" placeholder="예: 3분, 2시간 정도" maxlength="30" data-in="sz.durationEtc"></div>' : '') +
     '</div>';
-  h += group('종류', '하나 선택', SZ_TYPES, function (x) { return z.type === x; }, 'type');
-  h += group('발생 상황', '하나 선택', SZ_SITS, function (x) { return z.situation === x; }, 'situation');
+  h += group('종류', '하나 선택', withExtra(SZ_TYPES, z.type), function (x) { return z.type === x; }, 'type');
+  h += group('발생 상황', '하나 선택', withExtra(SZ_SITS, z.situation), function (x) { return z.situation === x; }, 'situation');
   h += '<div class="card"><div class="between"><span class="h2">전조 증상</span><span class="sub">여러 개 선택</span></div><div class="chips">' +
-    SZ_AURA.map(function (x) { return chip(x, z.aura.indexOf(x) >= 0, 'szAura'); }).join('') + '</div></div>';
-  h += group('당시 복약', '하나 선택', SZ_MED, function (x) { return z.medState === x; }, 'medState');
+    withExtra(SZ_AURA, z.aura).map(function (x) { return chip(x, z.aura.indexOf(x) >= 0, 'szAura'); }).join('') + '</div></div>';
+  h += group('당시 복약', '하나 선택', withExtra(SZ_MED, z.medState), function (x) { return z.medState === x; }, 'medState');
   h += '<div class="card"><div class="field"><label class="lbl" for="szMemo">메모</label><textarea id="szMemo" placeholder="예: 이후 잘 먹고 기운 있음" data-in="sz.memo">' + esc(z.memo) + '</textarea></div></div>';
-  h += '<button class="btn wide" data-act="saveSz"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : '저장하기') + '</button>';
-  return h;
+  h += '<button class="btn wide" data-act="saveSz"' + (S.busy ? ' disabled' : '') + '>' + (S.busy ? '저장 중…' : z.id ? '수정 저장' : '저장하기') + '</button>';
+  if (z.id) {
+    h += '<button class="btn wide outline" style="border-color:var(--orange);color:var(--orange)" data-act="deleteSz"' + (S.busy ? ' disabled' : '') + '>이 기록 삭제</button>';
+    return h;
+  }
+  h += '<div class="card"><span class="h2">최근 기록</span>';
+  if (!S.szList) h += '<div class="spinner" aria-label="불러오는 중"></div>';
+  else if (!S.szList.length) h += '<div class="empty">아직 기록이 없어요</div>';
+  else S.szList.forEach(function (r) { h += szRow(r); });
+  return h + '</div>';
+}
+/** 기록 한 줄 (최근 기록 목록과 달력 상세에서 같이 씀) */
+function szRow(r, withDate) {
+  withDate = withDate !== false;
+  return '<div class="row" style="align-items:flex-start"><div class="info"><span class="name" style="color:var(--orange)">' +
+    (withDate ? esc(r.date.slice(5).replace('-', '/')) + ' ' : '상담대비 기록 ') + esc(r.time) + (r.duration ? ' · ' + esc(r.duration) : '') + '</span>' +
+    '<span class="sub">' + esc([r.type, r.situation, r.aura && ('전조: ' + r.aura), r.medState && ('복약: ' + r.medState)].filter(Boolean).join(' · ')) + '</span>' +
+    (r.memo ? '<span class="sub" style="color:var(--ink2);white-space:pre-line">' + esc(r.memo) + '</span>' : '') +
+    '<span class="sub">기록: ' + esc(r.by) + (r.updatedAt ? ' · 수정함' : '') + '</span></div>' +
+    '<button class="btn ghost" data-act="editSz" data-v="' + esc(r.id) + '" aria-label="' + esc(r.date + ' ' + r.time) + ' 상담대비 기록 수정">수정</button></div>';
 }
 function group(title, hint, items, isOn, field) {
   return '<div class="card"><div class="between"><span class="h2">' + title + '</span><span class="sub">' + hint + '</span></div><div class="chips">' +
@@ -423,11 +467,7 @@ function renderCalendar() {
     h += '<div class="card"><span class="h2">' + m.m + '월 ' + sel.day + '일 기록</span>';
     var szs = SHOW_SEIZURE ? sel.seizures : [];
     if (!sel.doses.length && !szs.length) h += '<div class="empty">기록이 없어요</div>';
-    szs.forEach(function (z) {
-      h += '<div class="row" style="align-items:flex-start"><div class="info"><span class="name" style="color:var(--orange)">상담대비 기록 ' + esc(z.time) + ' · ' + esc(z.duration) + '</span>' +
-        '<span class="sub">' + esc([z.type, z.situation, z.aura && ('전조: ' + z.aura), z.medState && ('복약: ' + z.medState)].filter(Boolean).join(' · ')) + '</span>' +
-        (z.memo ? '<span class="sub" style="color:var(--ink2)">' + esc(z.memo) + '</span>' : '') + '<span class="sub">기록: ' + esc(z.by) + '</span></div></div>';
-    });
+    szs.forEach(function (z) { h += szRow(z, false); });
     sel.doses.forEach(function (x) {
       h += '<div class="row"><div class="info"><span class="name">' + esc(x.name) + ' <small>' + (x.prn ? '필요 시 · ' + esc(x.reason) : esc(x.slot) + ' 회차') + '</small></span>' +
         '<span class="sub">' + esc(x.by) + ' · ' + esc(x.at) + '</span></div></div>';
@@ -552,6 +592,7 @@ var ACTIONS = {
     if (v === 'today') S.day = '';
     if (v === 'cal') loadMonth();
     if (v === 'visit') loadVisits();
+    if (v === 'seizure') loadSzList();
     if (v === 'today') refresh();
     render(); window.scrollTo(0, 0);
   },
@@ -679,9 +720,27 @@ var ACTIONS = {
     var send = Object.assign({}, z, { duration: z.duration === '기타' && z.durationEtc.trim() ? z.durationEtc.trim() : z.duration });
     act('api_saveSeizure', S.who, send).then(function (res) {
       if (!res) return;
-      S.sz = null; S.tab = 'today'; S.monthData = null; refresh();
-      toast('상담대비 기록을 저장했어요 · 가족 화면 달력에도 보여요');
-      window.scrollTo(0, 0);
+      S.sz = null; S.monthData = null; S.szList = null;
+      if (z.id) { loadSzList(); toast('상담대비 기록을 고쳤어요'); }
+      else { S.tab = 'today'; refresh(); toast('상담대비 기록을 저장했어요 · 가족 화면 달력에도 보여요'); }
+      render(); window.scrollTo(0, 0);
+    });
+  },
+  editSz: function (id) {
+    var r = findSz(id);
+    if (!r) { toast('기록을 찾을 수 없어요. 새로고침 해 주세요.', true); return; }
+    S.sz = szFromRecord(r); S.tab = 'seizure'; S.warn = null;
+    if (!S.szList) loadSzList();
+    render(); window.scrollTo(0, 0);
+  },
+  szCancel: function () { S.sz = null; render(); window.scrollTo(0, 0); },
+  deleteSz: function () {
+    var z = S.sz;
+    if (!confirm('이 상담대비 기록을 삭제할까요? 되돌릴 수 없어요.')) return;
+    act('api_deleteSeizure', z.id).then(function (res) {
+      if (!res) return;
+      S.sz = null; S.monthData = null; S.szList = null; loadSzList();
+      toast('기록을 삭제했어요'); render(); window.scrollTo(0, 0);
     });
   },
   month: function (v) {

@@ -233,6 +233,53 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   assert.match(t, /이 날 복약 기록하기/);
   await snap('calendar');
 
+  // 9-a. 상담대비 기록 수정: 달력 상세에서 [수정] → 값이 채워진 폼 → 수정 저장
+  const szId = env.sheets['상담대비기록'].rows[1][0];
+  await page.click(`[data-act="editSz"][data-v="${szId}"]`);
+  await settle();
+  t = await text();
+  assert.match(t, /기록 수정 중/);
+  assert.strictEqual(await page.inputValue('#szTime'), '14:02');
+  assert.strictEqual(await page.locator('[data-v="duration|기타"]').getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(await page.inputValue('#szDurEtc'), '3분 정도', '직접 적은 지속 시간이 그대로');
+  assert.strictEqual(await page.locator('[data-v="type|부분 떨림"]').getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(await page.locator('[data-act="szAura"][data-v="쓴맛"]').getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(await page.inputValue('#szMemo'), '금방 회복, 잘 놀고 있음');
+  await page.click('[data-v="type|멍해짐"]');
+  await page.click('[data-act="szAura"][data-v="공포감"]');
+  await page.fill('#szMemo', '금방 회복\n저녁에 피곤해함');
+  await snap('seizure-edit');
+  await page.click('[data-act="saveSz"]');
+  await settle();
+  t = await text();
+  assert.match(t, /상담대비 기록을 고쳤어요/);
+  assert.match(t, /최근 기록/);
+  assert.match(t, /10\/24 14:02 · 3분 정도\n멍해짐 · 공부 중 · 전조: 쓴맛, 공포감 · 복약: 제때 복용\n금방 회복\n저녁에 피곤해함\n기록: 아이 · 수정함/);
+  assert.strictEqual(env.sheets['상담대비기록'].rows.filter((r) => r[0]).length, 2, '머리글 + 1건 (새로 안 생김)');
+  assert.strictEqual(env.sheets['상담대비기록'].rows[1][4], '멍해짐');
+  // 예전 선택지로 적힌 기록도 값이 사라지지 않음
+  env.sheets['상담대비기록'].rows.push(['S_OLD', '2026-10-20', '09:30', '2분', '부분 경련', '일상생활 중', '이상한 맛', '', '', '엄마', '2026-10-20 09:40:00']);
+  await page.click('nav [data-v="today"]');
+  await page.click('nav [data-v="seizure"]');
+  await settle();
+  await page.click('[data-act="editSz"][data-v="S_OLD"]');
+  await settle();
+  assert.strictEqual(await page.locator('[data-v="type|부분 경련"]').getAttribute('aria-pressed'), 'true', '예전 종류도 선택된 채로 보임');
+  assert.strictEqual(await page.locator('[data-act="szAura"][data-v="이상한 맛"]').getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(await page.inputValue('#szDurEtc'), '2분');
+  await page.click('[data-act="saveSz"]');
+  await settle();
+  assert.deepStrictEqual(env.sheets['상담대비기록'].rows.find((r) => r[0] === 'S_OLD').slice(3, 7), ['2분', '부분 경련', '일상생활 중', '이상한 맛'], '그대로 저장해도 값 유지');
+  // 수정 취소, 삭제
+  await page.click('[data-act="editSz"][data-v="S_OLD"]');
+  await page.click('[data-act="szCancel"]');
+  assert.doesNotMatch(await text(), /기록 수정 중/);
+  await page.click('[data-act="editSz"][data-v="S_OLD"]');
+  await page.click('[data-act="deleteSz"]');
+  await settle();
+  assert.match(await text(), /기록을 삭제했어요/);
+  assert.ok(!env.sheets['상담대비기록'].rows.some((r) => r[0] === 'S_OLD'));
+
   // 9-0. 지난 날짜 복약 기록: 다음 날 아침에 어제 저녁 약을 기록
   env.setNow(at('09:00', '2026-10-25'));
   await page.click('nav [data-v="today"]');

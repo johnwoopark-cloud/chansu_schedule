@@ -387,4 +387,46 @@ test('상담대비 기록: 직접 적은 지속 시간 저장', () => {
   assert.strictEqual(env.sheets['상담대비기록'].rows[1][3], '2시간 넘게 멍하게 있었음 (중간에 잠듦)'.slice(0, 30));
 });
 
+test('상담대비 기록 수정: 같은 행을 고치고 처음 기록한 사람은 유지', () => {
+  const { env, c, k } = fresh();
+  env.setNow(at('14:12'));
+  c.api_saveSeizure(k, '아이', { date: '2026-10-24', time: '14:05', duration: '1분', type: '멍해짐', situation: '공부 중', aura: ['쓴맛'], memo: '처음 메모' });
+  c.api_saveSeizure(k, '엄마', { date: '2026-10-23', time: '09:00', duration: '5분', type: '기타' });
+  let list = c.api_seizures(k);
+  deq(list.map((x) => x.date + ' ' + x.time), ['2026-10-24 14:05', '2026-10-23 09:00'], '최근 것부터');
+  const first = list[0];
+  assert.strictEqual(first.aura, '쓴맛');
+  assert.strictEqual(first.updatedAt, '');
+  env.setNow(at('20:00'));
+  c.api_saveSeizure(k, '아빠', { id: first.id, date: '2026-10-24', time: '14:00', duration: '30분 이상', type: '전신 떨림', situation: '게임 중', aura: ['쓴맛', '공포감'], medState: '미복용', memo: '고친 메모' });
+  list = c.api_seizures(k);
+  const e = list.find((x) => x.id === first.id);
+  deq([e.time, e.duration, e.type, e.situation, e.aura, e.medState, e.memo], ['14:00', '30분 이상', '전신 떨림', '게임 중', '쓴맛, 공포감', '미복용', '고친 메모']);
+  assert.strictEqual(e.by, '아이', '처음 기록한 사람 유지');
+  assert.strictEqual(e.updatedAt, '2026-10-24 20:00:00');
+  assert.strictEqual(env.sheets['상담대비기록'].getLastRow(), 3, '새 행을 만들지 않음');
+  assert.strictEqual(c.api_month(k, 2026, 10).days[23].seizures[0].id, first.id, '달력 상세에도 ID가 있음');
+  c.api_deleteSeizure(k, first.id);
+  deq(c.api_seizures(k).map((x) => x.date), ['2026-10-23']);
+  assert.throws(() => c.api_saveSeizure(k, '엄마', { id: 'nope', type: '기타' }), /찾을 수 없어요/);
+  assert.throws(() => c.api_seizures('wrong'), /AUTH/);
+  assert.throws(() => c.api_deleteSeizure('wrong', 'x'), /AUTH/);
+});
+
+test('예전 상담대비기록 탭(수정시각 칸 없음)도 수정하면 칸이 생김', () => {
+  const { env, c, k } = fresh();
+  const sh = env.sheets['상담대비기록'];
+  sh.rows[0] = sh.rows[0].slice(0, 11);                  // 예전 머리글 (수정시각 없음)
+  sh.rows.push(['S_OLD', '2026-10-20', '10:00', '2분', '부분 경련', '', '', '', '', '엄마', '2026-10-20 10:05:00']);
+  env.setNow(at('09:00'));
+  c.api_saveSeizure(k, '아빠', { id: 'S_OLD', date: '2026-10-20', time: '10:00', duration: '1분', type: '부분 떨림' });
+  assert.strictEqual(sh.rows[0][11], '수정시각');
+  const e = c.api_seizures(k).find((x) => x.id === 'S_OLD');
+  assert.strictEqual(e.type, '부분 떨림');
+  assert.strictEqual(e.updatedAt, '2026-10-24 09:00:00');
+  assert.strictEqual(sh.rows[0].length, 12, '머리글은 한 번만 추가');
+  c.api_saveSeizure(k, '아빠', { id: 'S_OLD', date: '2026-10-20', time: '10:00', type: '기타' });
+  assert.strictEqual(sh.rows[0].length, 12);
+});
+
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));
