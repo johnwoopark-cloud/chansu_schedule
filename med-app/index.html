@@ -114,7 +114,7 @@ nav.tabs button.on{color:var(--blue);font-weight:700}
 var URL_KEY = <?!= jsonForHtml_(urlKey) ?>;
 var APP_URL = <?!= jsonForHtml_(appUrl) ?>;
 // Code.gs의 APP_VERSION과 같아야 한다
-var CLIENT_VERSION = '9';
+var CLIENT_VERSION = '10';
 // 상담대비 기록 탭 켜기/끄기. 숨기려면 false로 바꾸고 새 버전으로 배포 (기존 기록은 시트에 그대로 있음)
 var SHOW_SEIZURE = true;
 
@@ -330,7 +330,11 @@ function renderToday(d) {
     var due = sched.filter(function (m) { return m.times.indexOf(t) >= 0; });
     var done = due.filter(function (m) { return d.taken[m.id + '|' + t]; }).length;
     var all = done === due.length;
-    h += '<div class="card' + (all ? ' done' : '') + '"><div class="between"><span class="slot-time">' + t + '</span><span class="sub' + (all ? ' ok' : '') + '">' + (all ? '모두 완료' : done + ' / ' + due.length + ' 완료') + '</span></div>';
+    h += '<div class="card' + (all ? ' done' : '') + '"><div class="between" style="align-items:center"><span style="display:flex;align-items:baseline;gap:10px"><span class="slot-time">' + t + '</span>' +
+      '<span class="sub' + (all ? ' ok' : '') + '">' + (all ? '모두 완료' : done + ' / ' + due.length + ' 완료') + '</span></span>' +
+      // 약이 2개 이상인 시간대에서 아직 안 먹은 약이 있으면 [전부] 버튼
+      (!all && due.length > 1 ? '<button class="btn" style="min-width:0;min-height:40px;font-size:14px" data-act="slotAll" data-v="' + t + '" aria-label="' + t + ' 약 전부 먹었어요"' + (S.busy ? ' disabled' : '') + '>전부</button>' : '') +
+      '</div>';
     due.forEach(function (m) {
       var tk = d.taken[m.id + '|' + t];
       h += '<div class="row"><div class="info"><span class="name">' + esc(m.name) + ' <small>' + esc(m.dose) + '</small></span>' +
@@ -661,6 +665,15 @@ var ACTIONS = {
         S.warn = { text: '방금 ' + res.by + iGa(res.by) + ' ' + res.at + '에 먼저 기록했어요. 두 번 먹지 않도록 확인하세요.', actions: [{ label: '확인', act: 'clearWarn', primary: true }] };
         render();
       } else toast(dayName + slot + ' ' + med.name + ' 기록됨 · 가족 화면에도 보여요');
+    });
+  },
+  slotAll: function (t) {
+    var dayName = S.day ? relDay(S.data.date, S.data.today) + ' ' : '';
+    S.warn = null; S.pendingPrn = null;
+    act('api_takeSlot', S.who, t, S.day).then(function (res) {
+      if (!res) return;
+      if (!res.added.length) { toast('이미 모두 기록돼 있어요'); return; }
+      toast(dayName + t + ' 약 ' + res.added.length + '개 기록됨' + (res.skipped ? ' (먼저 기록된 ' + res.skipped + '개는 그대로)' : ''));
     });
   },
   undo: function (v) {

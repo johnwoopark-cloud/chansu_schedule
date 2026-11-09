@@ -429,4 +429,42 @@ test('예전 상담대비기록 탭(수정시각 칸 없음)도 수정하면 칸
   assert.strictEqual(sh.rows[0].length, 12);
 });
 
+test('[전부]: 그 시간대 약을 한 번에, 이미 먹은 약은 건너뜀', () => {
+  const { env, c, k, sched } = fresh();
+  c.api_addMed(k, { name: '데파킨', dose: '2ml', stock: '20ml', times: ['08:00'] });
+  c.api_addMed(k, { name: '비타민', dose: '1정', stock: '30정', times: ['08:00', '20:00'] });
+  const meds = c.api_today(k).meds;
+  const dep = meds.find((m) => m.name === '데파킨');
+  env.setNow(at('08:02'));
+  c.api_takeDose(k, '아빠', dep.id, '08:00');                       // 아빠가 하나 먼저 먹임
+  env.setNow(at('08:05'));
+  const r = c.api_takeSlot(k, '엄마', '08:00');
+  assert.strictEqual(r.status, 'ok');
+  deq(r.added.sort(), ['비타민', '케프라액'].sort());
+  assert.strictEqual(r.skipped, 1);
+  deq(r.state.taken[dep.id + '|08:00'], { by: '아빠', at: '08:02' }, '먼저 기록한 건 그대로');
+  deq(r.state.taken[sched.id + '|08:00'], { by: '엄마', at: '08:05' });
+  assert.strictEqual(r.state.meds.find((m) => m.id === sched.id).stock, 41.5, '재고도 각각 차감');
+  assert.strictEqual(r.state.meds.find((m) => m.name === '비타민').stock, 29);
+  assert.strictEqual(r.state.taken[sched.id + '|20:00'], undefined, '다른 시간대는 그대로');
+  const again = c.api_takeSlot(k, '엄마', '08:00');
+  deq(again.added, []);
+  assert.strictEqual(again.skipped, 3);
+  assert.strictEqual(env.sheets['복약기록'].rows.filter((x) => x[2] === '08:00').length, 3, '중복 기록 없음');
+});
+
+test('[전부]: 지난 날짜, 잘못된 입력, 인증', () => {
+  const { env, c, k, sched } = fresh();
+  env.setNow(at('09:00', '2026-10-25'));
+  const r = c.api_takeSlot(k, '엄마', '20:00', '2026-10-24');
+  deq(r.added, ['케프라액']);
+  assert.strictEqual(r.state.date, '2026-10-24');
+  deq(r.state.taken[sched.id + '|20:00'], { by: '엄마', at: '20:00' });
+  assert.strictEqual(env.sheets['복약기록'].rows[1][9], '나중에 기록');
+  assert.throws(() => c.api_takeSlot(k, '엄마', '12:00'), /찾을 수 없어요/);
+  assert.throws(() => c.api_takeSlot(k, '할머니', '08:00'), /누가/);
+  assert.throws(() => c.api_takeSlot(k, '엄마', '08:00', '2026-10-01'), /7일/);
+  assert.throws(() => c.api_takeSlot('wrong', '엄마', '08:00'), /AUTH/);
+});
+
 console.log('\n' + passed + ' passed' + (process.exitCode ? ', some FAILED' : ''));

@@ -41,7 +41,7 @@ const VISIT_KINDS = ['상담센터', '병원 상담', '검사'];
 const VISIT_TEST = '검사';
 
 // index.html의 CLIENT_VERSION과 같아야 한다. 둘이 다르면 화면에 "파일 버전이 달라요" 안내가 뜬다.
-const APP_VERSION = '9';
+const APP_VERSION = '10';
 
 const KIND_SCHEDULED = '정해진시간';
 const KIND_PRN = '필요시';
@@ -88,22 +88,47 @@ function api_takeDose(key, who, medId, slot, date) {
   return withLock_(() => {
     const med = findMed_(medId);
     if (!med || med.kind !== KIND_SCHEDULED || med.times.indexOf(slot) < 0) throw new Error('약 정보를 찾을 수 없어요. 새로고침 해 주세요.');
-    const isToday = day === today_();
     const existing = readTable_(SHEETS.DOSES).find((r) =>
       r['날짜'] === day && r['약ID'] === medId && r['예정시각'] === slot && r['구분'] === KIND_SCHEDULED);
     if (existing) {
       return { status: 'dup', by: existing['기록자'], at: existing['실제시각'], state: todayState_(day) };
     }
-    appendRow_(SHEETS.DOSES, {
-      '기록ID': newId_('D'), '날짜': day, '예정시각': slot, '실제시각': isToday ? nowHM_() : slot,
-      '약ID': med.id, '약이름': med.name, '1회용량': med.dose, '기록자': who,
-      '구분': KIND_SCHEDULED, '이유': isToday ? '' : '나중에 기록', '저장시각': stamp_(),
-    });
-    changeStock_(med, -med.per);
-    // 약을 등록하기 전 날짜에 기록하면, 달력에서도 보이도록 시작일을 그날로 당긴다
-    if (med.start > day) updateRow_(SHEETS.MEDS, med._row, { '시작일': day });
+    recordDose_(med, slot, day, who);
     return { status: 'ok', state: todayState_(day) };
   });
+}
+
+/** [전부]: 그 시간대의 정해진 약 중 아직 기록 안 된 것을 한 번에 기록한다 (이미 기록된 약은 건너뜀) */
+function api_takeSlot(key, who, slot, date) {
+  auth_(key);
+  who = checkWho_(who);
+  const day = dayOrToday_(date);
+  return withLock_(() => {
+    const meds = readMeds_().filter((m) => m.active && m.kind === KIND_SCHEDULED && m.times.indexOf(slot) >= 0);
+    if (!meds.length) throw new Error('약 정보를 찾을 수 없어요. 새로고침 해 주세요.');
+    const done = readTable_(SHEETS.DOSES).filter((r) =>
+      r['날짜'] === day && r['예정시각'] === slot && r['구분'] === KIND_SCHEDULED).map((r) => r['약ID']);
+    const added = [];
+    meds.forEach((med) => {
+      if (done.indexOf(med.id) >= 0) return;
+      recordDose_(med, slot, day, who);
+      added.push(med.name);
+    });
+    return { status: 'ok', added: added, skipped: meds.length - added.length, state: todayState_(day) };
+  });
+}
+
+/** 정해진 시간 약 한 건 기록 + 재고 차감 (잠금 안에서 부른다) */
+function recordDose_(med, slot, day, who) {
+  const isToday = day === today_();
+  appendRow_(SHEETS.DOSES, {
+    '기록ID': newId_('D'), '날짜': day, '예정시각': slot, '실제시각': isToday ? nowHM_() : slot,
+    '약ID': med.id, '약이름': med.name, '1회용량': med.dose, '기록자': who,
+    '구분': KIND_SCHEDULED, '이유': isToday ? '' : '나중에 기록', '저장시각': stamp_(),
+  });
+  changeStock_(med, -med.per);
+  // 약을 등록하기 전 날짜에 기록하면, 달력에서도 보이도록 시작일을 그날로 당긴다
+  if (med.start > day) updateRow_(SHEETS.MEDS, med._row, { '시작일': day });
 }
 
 function api_undoDose(key, medId, slot, date) {

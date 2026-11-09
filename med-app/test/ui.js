@@ -35,6 +35,8 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
 
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  // 브라우저 날짜도 테스트 날짜로 고정 (실제 오늘 날짜에 따라 달력이 다른 달을 열지 않도록). 타이머는 그대로 동작
+  await page.clock.setFixedTime(new Date(at('07:30')));
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('dialog', (d) => d.accept());
@@ -286,6 +288,18 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await settle();
   t = await text();
   assert.match(t, /오늘\n10월 25일 일요일/);
+  // [전부]: 하나는 먼저 기록돼 있고, 나머지만 한 번에 기록
+  assert.strictEqual(await page.locator('[data-act="slotAll"]').count(), 2, '약이 2개인 시간대마다 [전부]');
+  await page.click(`[data-act="dose"][data-v="${kep.id}|08:00"]`);
+  await settle();
+  await page.click('[data-act="slotAll"][data-v="08:00"]');
+  await settle();
+  t = await text();
+  assert.match(t, /08:00 약 1개 기록됨 \(먼저 기록된 1개는 그대로\)/);
+  assert.match(t, /08:00\s*모두 완료/);
+  assert.strictEqual(await page.locator('[data-act="slotAll"][data-v="08:00"]').count(), 0, '다 먹으면 [전부] 숨김');
+  assert.strictEqual(env.sheets['복약기록'].rows.filter((r) => r[1] === '2026-10-25' && r[2] === '08:00').length, 2);
+  await snap('slot-all');
   assert.strictEqual(await page.locator('[data-act="dayShift"][data-v="1"]').isDisabled(), true, '미래로는 못 감');
   await page.click('[data-act="dayShift"][data-v="-1"]');
   await settle();
@@ -312,6 +326,14 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   await settle();
   assert.match(await text(), /20:00\n0 \/ 2 완료/);
   assert.strictEqual(env.sheets['복약기록'].rows.filter((r) => r[1] === '2026-10-24' && r[2] === '20:00').length, 0);
+  // 지난 날짜에서도 [전부]
+  await page.click('[data-act="slotAll"][data-v="20:00"]');
+  await settle();
+  t = await text();
+  assert.match(t, /어제 20:00 약 2개 기록됨/);
+  assert.match(t, /20:00\s*모두 완료/);
+  const lateAll = env.sheets['복약기록'].rows.filter((r) => r[1] === '2026-10-24' && r[2] === '20:00');
+  assert.deepStrictEqual(lateAll.map((r) => [r[3], r[7], r[9]]), [['20:00', '엄마', '나중에 기록'], ['20:00', '엄마', '나중에 기록']]);
   // 7일 전까지만
   for (let i = 0; i < 6; i++) { await page.click('[data-act="dayShift"][data-v="-1"]'); await settle(); }
   assert.match(await text(), /7일 전/);
@@ -341,6 +363,7 @@ const at = (hm, day = '2026-10-24') => day + 'T' + hm + ':00+09:00';
   assert.match(t, /데파킨 시럽 복용 중단됨/);
   assert.doesNotMatch(t.replace(/데파킨 시럽 복용 중단됨/, ''), /데파킨/);
   assert.ok(env.sheets['복약기록'].rows.some((r) => r[5] === '데파킨 시럽'), '지난 기록 유지');
+  assert.strictEqual(await page.locator('[data-act="slotAll"]').count(), 0, '약이 하나뿐인 시간대엔 [전부] 없음');
 
   // 9-2. 예전 Code.gs가 배포돼 있으면: 버전 안내가 뜨고, 저장 실패 메시지가 수정 창 위에 보임
   assert.doesNotMatch(await text(), /버전이 서로 달라요/);
